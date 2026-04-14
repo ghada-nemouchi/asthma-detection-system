@@ -1,0 +1,56 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 142 76% 36%;
+    --primary-dark: 142 76% 28%;
+    --secondary: 199 89% 48%;
+  }
+
+  body {
+    @apply bg-gray-50 font-sans antialiased;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 rounded-full hover:bg-gray-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200;
+  }
+  
+  .btn-primary {
+    @apply bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .risk-badge-low {
+    @apply bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .risk-badge-medium {
+    @apply bg-yellow-50 text-yellow-700 px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .risk-badge-high {
+    @apply bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .risk-badge-critical {
+    @apply bg-red-50 text-red-700 px-3 py-1 rounded-full text-sm font-medium animate-pulse;
+  }
+}
