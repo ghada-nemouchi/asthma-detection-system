@@ -48,7 +48,7 @@ export default function RegisterScreen({ navigation }) {
 
       await storeToken(token);
       await storeUser({ name, email, role });
-      navigation.replace('Dashboard');
+      navigation.replace('Home');
     } catch (error) {
       Alert.alert('Registration Failed', error.response?.data?.message || 'Email may already exist');
     } finally {
@@ -67,13 +67,13 @@ export default function RegisterScreen({ navigation }) {
           placeholder="Full Name *"
           value={name}
           onChangeText={setName}
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 12 }}
         />
         <TextInput
           placeholder="Email *"
           value={email}
           onChangeText={setEmail}
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 12 }}
           autoCapitalize="none"
           keyboardType="email-address"
         />
@@ -82,40 +82,40 @@ export default function RegisterScreen({ navigation }) {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 12 }}
         />
         <TextInput
           placeholder="Confirm Password *"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 12 }}
         />
         <TextInput
           placeholder="Age"
           value={age}
           onChangeText={setAge}
           keyboardType="numeric"
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 12 }}
         />
         <TextInput
           placeholder="Phone Number"
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
-          style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12, borderRadius: 8, marginBottom: 20 }}
+          style={{ borderWidth: 1, borderColor: '#547bfb', padding: 12, borderRadius: 8, marginBottom: 20 }}
         />
 
         <TouchableOpacity
           onPress={handleRegister}
           disabled={loading}
-          style={{ backgroundColor: '#10b981', padding: 15, borderRadius: 12, alignItems: 'center' }}
+          style={{ backgroundColor: '#547bfb', padding: 15, borderRadius: 12, alignItems: 'center' }}
         >
           {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontWeight: 'bold' }}>Register</Text>}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ textAlign: 'center', color: '#10b981' }}>Already have an account? Sign In</Text>
+          <Text style={{ textAlign: 'center', color: '##547bfb' }}>Already have an account? Sign In</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

@@ -7,12 +7,21 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
+// ===== IMPORT ROUTES FIRST =====
+const authRoutes = require('./routes/auth');
+const patientRoutes = require('./routes/patients');
+const readingRoutes = require('./routes/readings');
+const alertRoutes = require('./routes/alerts');
+const environmentalRoutes = require('./routes/environmental');
+
 const io = socketIo(server, {
   cors: {
     origin: ['http://localhost:5173', 'http://localhost:3000'],
     credentials: true,
   },
 });
+
 // Allow all origins for development (temporary fix)
 app.use(cors({
   origin: '*',
@@ -30,15 +39,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-const authRoutes = require('./routes/auth');
-const patientRoutes = require('./routes/patients');
-const readingRoutes = require('./routes/readings');
-const alertRoutes = require('./routes/alerts');
-
+// ===== USE ROUTES AFTER IMPORT =====
+app.use('/api/environmental', environmentalRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/patients', patientRoutes);
 app.use('/api/readings', readingRoutes);
+app.use('/api/patients', patientRoutes);
 app.use('/api/alerts', alertRoutes);
 
 // Test routes
@@ -48,6 +53,23 @@ app.get('/health', (req, res) => {
     message: 'Backend server is running',
     timestamp: new Date().toISOString()
   });
+});
+
+// Test DB endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const dbStatus = mongoose.connection.readyState;
+    const status = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    res.json({
+      database: status[dbStatus],
+      databaseName: mongoose.connection.name,
+      collections: collections.map(c => c.name),
+      message: 'Database connection is working!'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // MongoDB Connection
@@ -89,24 +111,9 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Server running on port ${PORT}`);
+  console.log(`📍 Local: http://localhost:${PORT}`);
+  console.log(`📍 Network: http://10.39.163.152:${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
-});
-
-// Test DB endpoint
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const dbStatus = mongoose.connection.readyState;
-    const status = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    res.json({
-      database: status[dbStatus],
-      databaseName: mongoose.connection.name,
-      collections: collections.map(c => c.name),
-      message: 'Database connection is working!'
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });

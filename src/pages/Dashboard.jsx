@@ -25,6 +25,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showAddPatientModal, setShowAddPatientModal] = useState(false);
+  const [availablePatients, setAvailablePatients] = useState([]);
+  const [loadingPatients, setLoadingPatients] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -83,12 +86,43 @@ const Dashboard = () => {
     }
   }, [fetchPatients, fetchAlerts]);
 
+  // Fetch available patients (ONLY ONE VERSION)
+  const fetchAvailablePatients = useCallback(async () => {
+    console.log('🔍 Fetching available patients...');
+    setLoadingPatients(true);
+    try {
+      const response = await api.get('/patients/available');
+      console.log('✅ API Response:', response.data);
+      console.log('📊 Number of patients:', response.data.length);
+      setAvailablePatients(response.data);
+    } catch (error) {
+      console.error('❌ Error fetching available patients:', error);
+      console.error('Full error:', error.response);
+    } finally {
+      setLoadingPatients(false);
+    }
+  }, []);
+
+  // Send request to patient
+  const sendDoctorRequest = async (patientId, patientName) => {
+    try {
+      const response = await api.post(`/patients/request/${patientId}`);
+      if (response.data.success) {
+        alert(`Request sent to ${patientName}`);
+        setShowAddPatientModal(false);
+        fetchAvailablePatients();
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to send request');
+    }
+  };
+
   // Socket.io for real-time alerts
   useEffect(() => {
     const socket = io('http://localhost:5000');
     socket.emit('join-doctors-room');
     socket.on('new_alert', () => {
-      fetchAlerts(); // refresh alerts when new one arrives
+      fetchAlerts();
     });
     return () => socket.disconnect();
   }, [fetchAlerts]);
@@ -109,7 +143,11 @@ const Dashboard = () => {
   };
 
   const handleRefresh = () => fetchData();
-  const handleAddPatient = () => navigate('/patients/new');
+  
+  const handleAddPatient = () => {
+    fetchAvailablePatients();
+    setShowAddPatientModal(true);
+  };
 
   const filteredPatients = patients.filter(patient =>
     patient.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -141,11 +179,15 @@ const Dashboard = () => {
         <div className="px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Activity className="w-6 h-6 text-white" />
+              <div className="mb-2">
+                <img
+                  src="/lung.png"
+                  alt="Lungs icon"
+                  className="w-12 h-12 object-contain"
+                />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-[#2c5cc8] to-[#547bfb] bg-clip-text text-transparent">
                   AsthmiCare
                 </h1>
                 <p className="text-sm text-gray-500">Clinical Dashboard • Real-time Monitoring</p>
@@ -206,10 +248,10 @@ const Dashboard = () => {
           </div>
         </div>
       </header>
-
+      
       <div className="max-w-7xl mx-auto px-8 py-8">
         {/* Welcome Banner */}
-        <div className="bg-gradient-to-r from-green-500 via-green-600 to-blue-500 rounded-2xl p-6 mb-8 text-white shadow-lg">
+        <div className="bg-gradient-to-r from-[#2c5cc8] via-[#547bfb] to-[#547bfb] rounded-2xl p-6 mb-8 text-white shadow-lg">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h2 className="text-2xl font-bold mb-2">
@@ -249,7 +291,7 @@ const Dashboard = () => {
               </div>
               <div className="text-left">
                 <p className="font-semibold text-gray-800">Add Patient</p>
-                <p className="text-xs text-gray-500">Register new patient</p>
+                <p className="text-xs text-gray-500">Connect with patient</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-400 group-hover:text-green-500" />
@@ -366,6 +408,56 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Add Patient Modal */}
+      {showAddPatientModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-800">Add New Patient</h3>
+              <button 
+                onClick={() => setShowAddPatientModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {loadingPatients ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
+                </div>
+              ) : availablePatients.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">No available patients found</p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Make sure patients have doctorId: null in the database
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availablePatients.map(patient => (
+                    <div key={patient._id} className="flex items-center justify-between p-4 border border-gray-100 rounded-xl hover:bg-gray-50">
+                      <div>
+                        <p className="font-semibold text-gray-800">{patient.name}</p>
+                        <p className="text-sm text-gray-500">{patient.email}</p>
+                        <p className="text-xs text-gray-400">Age: {patient.age || '--'}</p>
+                      </div>
+                      <button
+                        onClick={() => sendDoctorRequest(patient._id, patient.name)}
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        Send Request
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

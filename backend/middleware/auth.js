@@ -14,7 +14,8 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'User not found' });
       }
       
-      return next();  // ✅ added return
+      console.log('✅ User authenticated:', req.user.role);
+      return next();
     } catch (error) {
       console.error('Auth error:', error);
       return res.status(401).json({ message: 'Not authorized, token failed' });
@@ -22,14 +23,19 @@ const protect = async (req, res, next) => {
   }
 
   if (!token) {
+    console.log('❌ No token provided');
     return res.status(401).json({ message: 'Not authorized, no token' });
   }
 };
 
 const doctorOnly = (req, res, next) => {
+  console.log('👨‍⚕️ doctorOnly middleware, user role:', req.user?.role);
+  
   if (req.user && req.user.role === 'doctor') {
+    console.log('✅ User is a doctor, proceeding');
     return next();
   } else {
+    console.log('❌ Access denied - user is not a doctor');
     return res.status(403).json({ message: 'Access denied. Doctor only.' });
   }
 };

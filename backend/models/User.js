@@ -14,15 +14,23 @@ const userSchema = new mongoose.Schema({
   // Doctor-specific
   specialty: { type: String, default: 'Pulmonologist' },
   
-  // Patient-specific (only used if role === 'patient')
+  // Patient-specific fields
   age: Number,
-  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  baselineHr: { type: Number, default: 70 },
+  baselineSteps: { type: Number, default: 5000 },
+  readingCount: { type: Number, default: 0 },
   knownTriggers: [String],
   personalBestPef: { type: Number, default: 400 },
   fcmToken: String,
   riskLevel: { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'low' },
   riskScore: { type: Number, default: 0 },
   lastReading: Date,
+  
+  // Doctor-patient relationship (ONLY ONCE!)
+  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  doctorRequested: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  doctorRequestStatus: { type: String, enum: ['pending', 'accepted', 'rejected', 'none'], default: 'none' },
+  doctorRequestDate: { type: Date, default: null }
 });
 
 // Hash password before saving

@@ -1,19 +1,19 @@
 const mongoose = require('mongoose');
 
 const readingSchema = new mongoose.Schema({
-  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  night_symptoms: { type: Number, min: 0, max: 7, required: true },   // 0-7 nights per week
-  day_symptoms: { type: Number, min: 0, max: 7, required: true },     // 0-7 days per week
-  pef_norm: { type: Number, min: 0, max: 1, required: true },         // normalized to personal best
-  relief_use: { type: Number, min: 0, required: true },               // times per week
-  steps: Number,
-  mean_hr: Number,
-  sleep_minutes: Number,
-  temperature: Number,
-  aqi: Number,
-  riskScore: Number,
-  riskLevel: { type: String, enum: ['low', 'medium', 'high', 'critical'] },
-  timestamp: { type: Date, default: Date.now },
+  patientId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  night_symptoms:{ type: Number, min: 0, max: 7, required: true },  // nights/week
+  day_symptoms:  { type: Number, min: 0, max: 7, required: true },  // days/week
+  pef_norm:      { type: Number, min: 0, max: 1, required: true },  // fraction of personal best
+  relief_use:    { type: Number, min: 0, required: true },           // times/week
+  steps:         { type: Number, default: 0 },
+  mean_hr:       { type: Number, default: 0 },
+  sleep_minutes: { type: Number, default: 0 },
+  temperature:   { type: Number, default: 0 },
+  aqi:           { type: Number, default: 0 },
+  riskScore:     { type: Number, default: 0 },
+  riskLevel:     { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'low' },
+  timestamp:     { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('Reading', readingSchema);
