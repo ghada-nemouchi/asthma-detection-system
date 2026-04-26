@@ -29,7 +29,7 @@ const Start = () => {
         >
           Asthmicare
         </h1>
-        <p class="text-white tracking-wide">Doctor Portal</p>
+        <p className="text-white tracking-wide">Doctor Portal</p>
       </div>
 
       {/* Start Button at bottom */}

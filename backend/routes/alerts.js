@@ -17,6 +17,20 @@ router.get('/recent', protect, doctorOnly, async (req, res) => {
   }
 });
 
+// ✅ ADD THIS - Get alerts for a specific patient
+router.get('/patient/:patientId', protect, doctorOnly, async (req, res) => {
+  try {
+    const alerts = await Alert.find({ patientId: req.params.patientId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate('patientId', 'name email');
+    res.json(alerts);
+  } catch (error) {
+    console.error('Error fetching patient alerts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // PATCH /:id/read – mark alert as read (doctor only)
 router.patch('/:id/read', protect, doctorOnly, async (req, res) => {
   try {

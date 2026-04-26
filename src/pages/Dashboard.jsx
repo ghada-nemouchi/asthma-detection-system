@@ -34,8 +34,13 @@ const Dashboard = () => {
   // Fetch patients from API
   const fetchPatients = useCallback(async () => {
     try {
+      console.log('🟢 FETCH PATIENTS STARTED');
       const response = await api.get('/patients');
+      console.log('🟢 API RESPONSE:', response.data);
       const patientsData = response.data.patients || response.data;
+      console.log('🟢 PATIENTS DATA:', patientsData);
+      console.log('🟢 PATIENTS COUNT:', patientsData.length);
+      
       setPatients(patientsData);
       
       const highRisk = patientsData.filter(p => p.riskLevel === 'high' || p.riskLevel === 'High').length;
@@ -86,7 +91,7 @@ const Dashboard = () => {
     }
   }, [fetchPatients, fetchAlerts]);
 
-  // Fetch available patients (ONLY ONE VERSION)
+  // Fetch available patients
   const fetchAvailablePatients = useCallback(async () => {
     console.log('🔍 Fetching available patients...');
     setLoadingPatients(true);
@@ -153,6 +158,11 @@ const Dashboard = () => {
     patient.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Debug logs
+  console.log('📊 RENDER - patients length:', patients.length);
+  console.log('📊 RENDER - filteredPatients length:', filteredPatients.length);
+  console.log('📊 RENDER - loading:', loading);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -354,10 +364,16 @@ const Dashboard = () => {
               </div>
               
               <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+                                
                 {filteredPatients.length === 0 ? (
                   <div className="p-12 text-center">
                     <Users size={48} className="mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-500 font-medium">No patients found</p>
+                    {patients.length > 0 && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        (You have {patients.length} patient(s) but none match "{searchTerm}")
+                      </p>
+                    )}
                   </div>
                 ) : (
                   filteredPatients.map((patient) => (
@@ -378,7 +394,9 @@ const Dashboard = () => {
                               <h3 className="font-semibold text-gray-800 group-hover:text-green-600 truncate">
                                 {patient.name}
                               </h3>
-                              <RiskBadge riskLevel={patient.riskLevel || 'low'} />
+                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                {patient.riskLevel?.toUpperCase() || 'LOW'}
+                              </span>
                             </div>
                             <p className="text-sm text-gray-500 truncate">{patient.email}</p>
                             <div className="flex items-center gap-3 mt-1">

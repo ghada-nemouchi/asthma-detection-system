@@ -6,7 +6,6 @@ const Reading = require('../models/Reading');
 const { protect, doctorOnly } = require('../middleware/auth');
 
 // ============ PATIENT SELF-ACCESS ENDPOINTS ============
-// Add this endpoint to get any user by ID (for doctor info)
 router.get('/user/:id', protect, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -19,10 +18,8 @@ router.get('/user/:id', protect, async (req, res) => {
   }
 });
 
-// GET /api/patients/me – Patient gets their own profile
 router.get('/me', protect, async (req, res) => {
   try {
-    // Only patients can access their own profile
     if (req.user.role !== 'patient') {
       return res.status(403).json({ message: 'Access denied. Patient only.' });
     }
@@ -32,21 +29,17 @@ router.get('/me', protect, async (req, res) => {
       return res.status(404).json({ message: 'Patient not found' });
     }
     
-    // Get recent readings for stats
     const recentReadings = await Reading.find({ patientId: req.user.id })
       .sort({ timestamp: -1 })
       .limit(10);
     
-    // Calculate total readings count
     const totalReadings = await Reading.countDocuments({ patientId: req.user.id });
     
-    // Calculate high risk readings count
     const highRiskReadings = await Reading.countDocuments({ 
       patientId: req.user.id,
       riskLevel: { $in: ['high', 'critical'] }
     });
     
-    // Calculate average PEF percentage
     const readingsForAvg = await Reading.find({ 
       patientId: req.user.id,
       pef_norm: { $ne: null }
@@ -93,7 +86,7 @@ router.get('/me', protect, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-// PUT /api/patients/:id/fcm - Update FCM token
+
 router.put('/:id/fcm', protect, async (req, res) => {
   try {
     const patient = await User.findByIdAndUpdate(
@@ -106,7 +99,7 @@ router.put('/:id/fcm', protect, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// PUT /api/patients/me – Patient updates their own profile
+
 router.put('/me', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
@@ -143,14 +136,12 @@ router.put('/me', protect, async (req, res) => {
   }
 });
 
-// POST /api/patients/me/personal-best - Calculate personal best from readings
 router.post('/me/personal-best', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ message: 'Patient only' });
     }
 
-    // Get last 21 days of readings (3 weeks)
     const threeWeeksAgo = new Date();
     threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
     
@@ -158,7 +149,7 @@ router.post('/me/personal-best', protect, async (req, res) => {
       patientId: req.user.id,
       timestamp: { $gte: threeWeeksAgo },
       pef_norm: { $ne: null }
-    }).sort({ pef_norm: -1 }); // Sort by highest PEF first
+    }).sort({ pef_norm: -1 });
 
     if (readings.length === 0) {
       return res.json({
@@ -169,19 +160,15 @@ router.post('/me/personal-best', protect, async (req, res) => {
       });
     }
 
-      // Get the highest normalized value
     const highestPefNorm = readings[0].pef_norm;
-    // Calculate actual PEF value using current personal best as reference
-    let personalBestPef ; // default
+    let personalBestPef;
     const DEFAULT_PEF = 450; 
     if (req.user.personalBestPef && req.user.personalBestPef !== DEFAULT_PEF) {
       personalBestPef = Math.round(highestPefNorm * req.user.personalBestPef);
     } else {
-      // Estimate based on age/gender if needed
       personalBestPef = Math.round(highestPefNorm * DEFAULT_PEF);
     }
 
-    // Update user
     await User.findByIdAndUpdate(req.user.id, {
       personalBestPef: personalBestPef,
       personalBestStatus: 'calculated',
@@ -205,7 +192,6 @@ router.post('/me/personal-best', protect, async (req, res) => {
   }
 });
 
-// GET /api/patients/me/personal-best-status - Check status
 router.get('/me/personal-best-status', protect, async (req, res) => {
   try {
     const patient = await User.findById(req.user.id);
@@ -224,7 +210,6 @@ router.get('/me/personal-best-status', protect, async (req, res) => {
       isExpired: false
     };
 
-    // Check if expired (6 months)
     if (patient.personalBestLastCalculated) {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -236,7 +221,7 @@ router.get('/me/personal-best-status', protect, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// ============ DEBUG ENDPOINT ============
+
 router.get('/me/debug-readings', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
@@ -264,7 +249,7 @@ router.get('/me/debug-readings', protect, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// GET /api/patients/me/readings – Patient gets their own readings
+
 router.get('/me/readings', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
@@ -295,7 +280,6 @@ router.get('/me/readings', protect, async (req, res) => {
   }
 });
 
-// GET /api/patients/me/stats – Patient gets their statistics
 router.get('/me/stats', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
@@ -347,7 +331,8 @@ router.get('/me/stats', protect, async (req, res) => {
 
 // ============ DOCTOR-ONLY ENDPOINTS ============
 
-// GET /api/patients/available - MUST COME BEFORE /:id !
+// ✅ SPECIFIC ROUTES FIRST (before generic :id)
+
 router.get('/available', protect, doctorOnly, async (req, res) => {
   console.log('🚨🚨🚨 /available endpoint was called! 🚨🚨🚨');
   
@@ -370,13 +355,46 @@ router.get('/available', protect, doctorOnly, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-// GET /api/patients/pending-request - Patient checks pending doctor request
+
+router.get('/', protect, doctorOnly, async (req, res) => {
+  try {
+    console.log('🔍 Looking for patients with doctorId:', req.user._id);
+    
+    const patients = await User.find({ doctorId: req.user._id, role: 'patient' }).sort('-createdAt');
+    
+    // ✅ ADD THIS LINE TO SEE HOW MANY PATIENTS WERE FOUND
+    console.log(`📊 Found ${patients.length} patients for doctor ${req.user.name}`);
+    
+    // ✅ ALSO LOG THE PATIENT NAMES
+    if (patients.length > 0) {
+      console.log('Patients:', patients.map(p => ({ name: p.name, id: p._id })));
+    } else {
+      console.log('⚠️ No patients found!');
+      console.log('⚠️ Query:', { doctorId: req.user._id, role: 'patient' });
+    }
+
+    const stats = {
+      total: patients.length,
+      highRisk: patients.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical').length,
+      critical: patients.filter(p => p.riskLevel === 'critical').length,
+      avgRiskScore: patients.length > 0
+        ? (patients.reduce((sum, p) => sum + (p.riskScore || 0), 0) / patients.length).toFixed(1)
+        : 0
+    };
+
+    res.json({ patients, stats });
+  } catch (error) {
+    console.error('❌ Error in GET /patients:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ✅ PENDING REQUEST - MUST COME BEFORE /:id
 router.get('/pending-request', protect, async (req, res) => {
   try {
     console.log('📍 Pending request check for user:', req.user._id);
     console.log('User role:', req.user.role);
     
-    // Only patients can access this
     if (req.user.role !== 'patient') {
       return res.status(403).json({ message: 'Access denied. Patient only.' });
     }
@@ -398,27 +416,31 @@ router.get('/pending-request', protect, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-// GET /api/patients – all patients for the logged-in doctor
-router.get('/', protect, doctorOnly, async (req, res) => {
+
+// ✅ /:id/alerts BEFORE /:id
+router.get('/:id/alerts', protect, doctorOnly, async (req, res) => {
   try {
-    const patients = await User.find({ doctorId: req.user._id, role: 'patient' }).sort('-createdAt');
-
-    const stats = {
-      total: patients.length,
-      highRisk: patients.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical').length,
-      critical: patients.filter(p => p.riskLevel === 'critical').length,
-      avgRiskScore: patients.length > 0
-        ? (patients.reduce((sum, p) => sum + (p.riskScore || 0), 0) / patients.length).toFixed(1)
-        : 0
-    };
-
-    res.json({ patients, stats });
+    const Alert = require('../models/Alert');
+    const alerts = await Alert.find({ patientId: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json(alerts);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// GET /api/patients/:id – single patient (doctor only) - MUST COME AFTER /available
+// ✅ /:id/readings BEFORE /:id
+router.get('/:id/readings', protect, doctorOnly, async (req, res) => {
+  try {
+    const readings = await Reading.find({ patientId: req.params.id }).sort('-timestamp').limit(50);
+    res.json(readings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ✅ GENERIC /:id route LAST (catch-all)
 router.get('/:id', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.findOne({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
@@ -429,7 +451,6 @@ router.get('/:id', protect, doctorOnly, async (req, res) => {
   }
 });
 
-// POST /api/patients – doctor creates a patient account
 router.post('/', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.create({
@@ -444,7 +465,6 @@ router.post('/', protect, doctorOnly, async (req, res) => {
   }
 });
 
-// PUT /api/patients/:id – doctor updates a patient
 router.put('/:id', protect, doctorOnly, async (req, res) => {
   try {
     let patient = await User.findOne({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
@@ -457,7 +477,6 @@ router.put('/:id', protect, doctorOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/patients/:id – doctor removes a patient
 router.delete('/:id', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.findOneAndDelete({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
@@ -468,17 +487,6 @@ router.delete('/:id', protect, doctorOnly, async (req, res) => {
   }
 });
 
-// GET /api/patients/:id/readings – doctor views patient's readings
-router.get('/:id/readings', protect, doctorOnly, async (req, res) => {
-  try {
-    const readings = await Reading.find({ patientId: req.params.id }).sort('-timestamp').limit(50);
-    res.json(readings);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// POST /api/patients/request/:patientId - Doctor requests to add a patient
 router.post('/request/:patientId', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.findOne({ 
@@ -527,7 +535,6 @@ router.post('/request/:patientId', protect, doctorOnly, async (req, res) => {
   }
 });
 
-// POST /api/patients/respond-request/:doctorId - Patient accepts/rejects doctor request
 router.post('/respond-request/:doctorId', protect, async (req, res) => {
   try {
     const { action } = req.body;
@@ -586,9 +593,6 @@ router.post('/respond-request/:doctorId', protect, async (req, res) => {
   }
 });
 
-
-
-// POST /api/patients/:id/readings – doctor manually adds a reading
 router.post('/:id/readings', protect, doctorOnly, async (req, res) => {
   try {
     const reading = await Reading.create({ ...req.body, patientId: req.params.id });

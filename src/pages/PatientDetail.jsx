@@ -14,13 +14,13 @@ import {
   Bell,
   MapPin,
   AlertCircle,
-  TrendingUp,
-  Clock,
   Calendar,
   Download,
   Edit,
   Trash2,
-  RefreshCw
+  Pill,
+  History,
+  Clock
 } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import VitalsChart from '../components/VitalsChart';
@@ -31,6 +31,8 @@ const PatientDetail = () => {
   const { user } = useAuth();
   const [patient, setPatient] = useState(null);
   const [readings, setReadings] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('vitals');
@@ -39,31 +41,80 @@ const PatientDetail = () => {
   // Fetch patient data
   const fetchPatientData = async () => {
     try {
+      console.log('🔵 FETCHING patient data for:', patientId);
       setLoading(true);
       const response = await api.get(`/patients/${patientId}`);
+      console.log('🔵 PATIENT DATA RECEIVED:', response.data);
       setPatient(response.data);
+      setLoading(false);  // ✅ ADD THIS
     } catch (err) {
-      console.error('Error fetching patient:', err);
+      console.error('🔴 Error fetching patient:', err);
       setError('Patient not found');
-    } finally {
-      setLoading(false);
+      setLoading(false);  // ✅ KEEP THIS
+    }
+  };
+  // Fetch patient readings
+  const fetchReadings = async () => {
+  try {
+    console.log('🔵 FETCHING readings for:', patientId);
+    const response = await api.get(`/patients/${patientId}/readings`);
+    console.log('🔵 READINGS RECEIVED:', response.data);
+    setReadings(response.data);
+  } catch (err) {
+    console.error('🔴 Error fetching readings:', err);
+  }
+};
+
+  // Fetch alerts for this patient
+  const fetchAlerts = async () => {
+    try {
+      const response = await api.get(`/patients/${patientId}/alerts`);
+      setAlerts(response.data);
+    } catch (err) {
+      console.error('Error fetching alerts:', err);
+      // If endpoint doesn't exist yet, fallback to filtering from readings
+      const highRiskReadings = readings.filter(r => 
+        r.riskLevel === 'high' || r.riskLevel === 'critical'
+      );
+      setAlerts(highRiskReadings.map(r => ({
+        _id: r._id,
+        riskLevel: r.riskLevel,
+        riskScore: r.riskScore,
+        message: `${r.riskLevel.toUpperCase()} risk detected on ${new Date(r.timestamp).toLocaleDateString()}`,
+        createdAt: r.timestamp,
+        isRead: false
+      })));
     }
   };
 
-  // Fetch patient readings
-  const fetchReadings = async () => {
+  // Fetch medications (you'll need to add this endpoint)
+  const fetchMedications = async () => {
     try {
-      const response = await api.get(`/patients/${patientId}/readings`);
-      setReadings(response.data);
+      
+      //  Get from patient object if stored
+      const response = await api.get(`/patients/${patientId}/medications`).catch(() => ({ data: [] }));
+      setMedications(response.data);
     } catch (err) {
-      console.error('Error fetching readings:', err);
+      console.log('No medications endpoint yet, using mock data');
+      // Fallback: Show empty state or mock data
+      setMedications([]);
     }
   };
 
   useEffect(() => {
-    fetchPatientData();
-    fetchReadings();
+    console.log('🔵 useEffect triggered for patientId:', patientId);
+    const loadData = async () => {
+      await fetchPatientData();
+      await fetchReadings();
+    };
+    loadData();
   }, [patientId]);
+
+  useEffect(() => {
+    if (readings.length > 0) {
+      fetchAlerts();
+    }
+  }, [readings]);
 
   // Handle delete patient
   const handleDelete = async () => {
@@ -79,37 +130,27 @@ const PatientDetail = () => {
     }
   };
 
-  // Handle edit patient
-  const handleEdit = () => {
-    navigate(`/patients/${patientId}/edit`);
+  // Get risk color
+  const getRiskColor = (riskLevel) => {
+    switch(riskLevel?.toLowerCase()) {
+      case 'critical': return 'bg-red-100 text-red-700 border-red-200';
+      case 'high': return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      default: return 'bg-green-100 text-green-700 border-green-200';
+    }
   };
 
-  // Handle export report
-  const handleExport = async () => {
-    try {
-      const response = await api.get(`/patients/${patientId}/export`, {
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `patient-${patientId}-report.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      console.error('Error exporting report:', err);
-    }
+  // Format date
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="text-center">
-          <div 
-            className="w-16 h-16 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"
-            aria-label="Loading patient data"
-          ></div>
+          <div className="w-16 h-16 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading patient data...</p>
         </div>
       </div>
@@ -120,7 +161,7 @@ const PatientDetail = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="mx-auto mb-4 text-red-500" size={48} aria-hidden="true" />
+          <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
           <h3 className="text-lg font-semibold text-gray-800">{error || 'Patient not found'}</h3>
           <button
             onClick={() => navigate('/dashboard')}
@@ -142,9 +183,8 @@ const PatientDetail = () => {
             <button
               onClick={() => navigate('/dashboard')}
               className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
-              aria-label="Back to dashboard"
             >
-              <ArrowLeft size={24} className="text-gray-600" aria-hidden="true" />
+              <ArrowLeft size={24} className="text-gray-600" />
             </button>
             <div>
               <h1 className="text-3xl font-bold text-gray-800">{patient.name}</h1>
@@ -152,28 +192,19 @@ const PatientDetail = () => {
             </div>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={handleExport}
-              className="bg-white border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2"
-              aria-label="Export patient report"
-            >
-              <Download size={18} aria-hidden="true" />
+            <button className="bg-white border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2">
+              <Download size={18} />
               Export Report
             </button>
-            <button
-              onClick={handleEdit}
-              className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-colors flex items-center gap-2"
-              aria-label="Edit patient"
-            >
-              <Edit size={18} aria-hidden="true" />
+            <button className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-colors flex items-center gap-2">
+              <Edit size={18} />
               Edit
             </button>
             <button
               onClick={() => setShowConfirmDelete(true)}
               className="bg-red-500 text-white px-4 py-2 rounded-xl hover:bg-red-600 transition-colors flex items-center gap-2"
-              aria-label="Delete patient"
             >
-              <Trash2 size={18} aria-hidden="true" />
+              <Trash2 size={18} />
               Delete
             </button>
           </div>
@@ -184,7 +215,7 @@ const PatientDetail = () => {
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <Activity className="text-blue-600" size={22} aria-hidden="true" />
+                <Activity className="text-blue-600" size={22} />
               </div>
               <div>
                 <p className="text-sm text-gray-500">Age</p>
@@ -196,7 +227,7 @@ const PatientDetail = () => {
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                <Heart className="text-red-600" size={22} aria-hidden="true" />
+                <Heart className="text-red-600" size={22} />
               </div>
               <div>
                 <p className="text-sm text-gray-500">Current Risk</p>
@@ -208,7 +239,7 @@ const PatientDetail = () => {
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <Wind className="text-purple-600" size={22} aria-hidden="true" />
+                <Wind className="text-purple-600" size={22} />
               </div>
               <div>
                 <p className="text-sm text-gray-500">Asthma Severity</p>
@@ -222,11 +253,13 @@ const PatientDetail = () => {
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <Droplets className="text-green-600" size={22} aria-hidden="true" />
+                <Droplets className="text-green-600" size={22} />
               </div>
               <div>
                 <p className="text-sm text-gray-500">Risk Score</p>
-                <p className="text-xl font-semibold text-gray-800">{patient.riskScore || 0}%</p>
+                <p className="text-xl font-semibold text-gray-800">
+                  {patient.riskScore ? `${Math.round(patient.riskScore * 100)}%` : '0%'}
+                </p>
               </div>
             </div>
           </div>
@@ -237,21 +270,21 @@ const PatientDetail = () => {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Contact Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center gap-3">
-              <Phone size={18} className="text-gray-400" aria-hidden="true" />
+              <Phone size={18} className="text-gray-400" />
               <span className="text-gray-700">{patient.phone || 'Not provided'}</span>
             </div>
             <div className="flex items-center gap-3">
-              <Mail size={18} className="text-gray-400" aria-hidden="true" />
+              <Mail size={18} className="text-gray-400" />
               <span className="text-gray-700">{patient.email}</span>
             </div>
             <div className="flex items-center gap-3">
-              <MapPin size={18} className="text-gray-400" aria-hidden="true" />
+              <MapPin size={18} className="text-gray-400" />
               <span className="text-gray-700">
                 {patient.address?.city || patient.address || 'Not provided'}
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <Calendar size={18} className="text-gray-400" aria-hidden="true" />
+              <Calendar size={18} className="text-gray-400" />
               <span className="text-gray-700">
                 Registered: {new Date(patient.createdAt).toLocaleDateString()}
               </span>
@@ -268,9 +301,11 @@ const PatientDetail = () => {
                 ? 'text-green-600 border-b-2 border-green-600'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
-            aria-label="View vitals history"
           >
-            Vitals History
+            <div className="flex items-center gap-2">
+              <Activity size={18} />
+              Vitals History
+            </div>
           </button>
           <button
             onClick={() => setActiveTab('alerts')}
@@ -279,9 +314,11 @@ const PatientDetail = () => {
                 ? 'text-green-600 border-b-2 border-green-600'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
-            aria-label="View alert history"
           >
-            Alert History
+            <div className="flex items-center gap-2">
+              <Bell size={18} />
+              Alert History
+            </div>
           </button>
           <button
             onClick={() => setActiveTab('medications')}
@@ -290,17 +327,89 @@ const PatientDetail = () => {
                 ? 'text-green-600 border-b-2 border-green-600'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
-            aria-label="View medications"
           >
-            Medications
+            <div className="flex items-center gap-2">
+              <Pill size={18} />
+              Medications
+            </div>
           </button>
         </div>
 
         {/* Tab Content */}
         {activeTab === 'vitals' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {readings.length > 0 ? (
-              <>
+          <div className="space-y-6">
+            {/* Readings List - Like Mobile App */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <History size={20} className="text-green-500" />
+                  Recent Readings
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {readings.length} readings recorded
+                </p>
+              </div>
+              
+              <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+                {readings.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <Activity size={48} className="mx-auto text-gray-300 mb-3" />
+                    <p className="text-gray-500">No readings yet</p>
+                  </div>
+                ) : (
+                  readings.map((reading) => (
+                    <div key={reading._id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-sm text-gray-500">{formatDate(reading.timestamp)}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${getRiskColor(reading.riskLevel)}`}>
+                              {reading.riskLevel?.toUpperCase() || 'LOW'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                            <div>
+                              <p className="text-xs text-gray-500">Risk Score</p>
+                              <p className="text-lg font-semibold text-gray-800">
+                                {reading.riskScore ? `${Math.round(reading.riskScore * 100)}%` : '--'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">PEF</p>
+                              <p className="text-lg font-semibold text-gray-800">
+                                {reading.pef_norm ? `${Math.round(reading.pef_norm * 100)}%` : '--'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Reliever</p>
+                              <p className="text-lg font-semibold text-gray-800">
+                                {reading.relief_use || 0}/week
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Night Symptoms</p>
+                              <p className="text-lg font-semibold text-gray-800">
+                                {reading.night_symptoms || 0}/7
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Day Symptoms</p>
+                              <p className="text-lg font-semibold text-gray-800">
+                                {reading.day_symptoms || 0}/7
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Charts */}
+            {readings.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <VitalsChart 
                   data={readings}
                   title="PEF (% of personal best)"
@@ -312,28 +421,13 @@ const PatientDetail = () => {
                 />
                 <VitalsChart 
                   data={readings}
-                  title="Reliever Puffs (last 24h)"
-                  dataKey="relief_use"
-                  color="#ef4444"
-                  chartType="bar"
-                  yAxisDomain={[0, 'auto']}
-                  yAxisFormatter={(v) => `${v} puffs`}
-                  xAxisDataKey="timestamp"
-                />
-                <VitalsChart 
-                  data={readings}
-                  title="Risk Score"
+                  title="Risk Score Trend"
                   dataKey="riskScore"
                   color="#f59e0b"
                   yAxisDomain={[0, 1]}
                   yAxisFormatter={(v) => `${Math.round(v * 100)}%`}
                   xAxisDataKey="timestamp"
                 />
-              </>
-            ) : (
-              <div className="col-span-2 text-center py-12 bg-white rounded-2xl">
-                <Activity size={48} className="mx-auto text-gray-300 mb-3" aria-hidden="true" />
-                <p className="text-gray-500">No readings yet. Please submit a daily report.</p>
               </div>
             )}
           </div>
@@ -341,27 +435,57 @@ const PatientDetail = () => {
 
         {activeTab === 'alerts' && (
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Alert History</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Bell size={20} className="text-red-500" />
+              Alert History
+            </h3>
             <div className="space-y-3">
-              {patient.alerts?.length > 0 ? (
-                patient.alerts.map((alert, index) => (
-                  <div key={index} className="p-4 bg-red-50 rounded-xl border border-red-100">
+              {alerts.length === 0 ? (
+                <div className="text-center py-12">
+                  <Bell size={48} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">No alerts recorded</p>
+                  <p className="text-sm text-gray-400 mt-1">Patient has no high or critical risk events</p>
+                </div>
+              ) : (
+                alerts.map((alert, index) => (
+                  <div 
+                    key={alert._id || index} 
+                    className={`p-4 rounded-xl border ${
+                      alert.riskLevel === 'critical' 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-orange-50 border-orange-200'
+                    }`}
+                  >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-red-700">
-                        {alert.type || 'Critical Alert'}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {new Date(alert.createdAt).toLocaleString()}
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={18} className={alert.riskLevel === 'critical' ? 'text-red-600' : 'text-orange-600'} />
+                        <span className={`text-sm font-semibold ${
+                          alert.riskLevel === 'critical' ? 'text-red-700' : 'text-orange-700'
+                        }`}>
+                          {alert.riskLevel?.toUpperCase() || 'HIGH'} RISK ALERT
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <Clock size={12} />
+                        {formatDate(alert.createdAt)}
                       </span>
                     </div>
-                    <p className="text-gray-700">{alert.message}</p>
+                    <p className="text-gray-700 text-sm">
+                      {alert.message || `${alert.riskLevel?.toUpperCase()} risk detected with score ${Math.round((alert.riskScore || 0) * 100)}%`}
+                    </p>
+                    {alert.riskScore && (
+                      <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div 
+                            className={`h-1.5 rounded-full ${alert.riskLevel === 'critical' ? 'bg-red-500' : 'bg-orange-500'}`}
+                            style={{ width: `${Math.min((alert.riskScore || 0) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Risk Score: {Math.round((alert.riskScore || 0) * 100)}%</p>
+                      </div>
+                    )}
                   </div>
                 ))
-              ) : (
-                <div className="text-center py-8">
-                  <Bell size={48} className="mx-auto text-gray-300 mb-3" aria-hidden="true" />
-                  <p className="text-gray-500">No alerts recorded</p>
-                </div>
               )}
             </div>
           </div>
@@ -369,11 +493,21 @@ const PatientDetail = () => {
 
         {activeTab === 'medications' && (
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Current Medications</h3>
-            <div className="space-y-3">
-              {patient.medications?.length > 0 ? (
-                patient.medications.map((med, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Pill size={20} className="text-blue-500" />
+              Current Medications
+            </h3>
+            
+            {medications.length === 0 ? (
+              <div className="text-center py-12">
+                <Pill size={48} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-500 font-medium">No medications recorded</p>
+                <p className="text-sm text-gray-400 mt-1">Patient hasn't added any medications yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {medications.map((med, index) => (
+                  <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold text-gray-800">{med.name}</p>
@@ -384,13 +518,17 @@ const PatientDetail = () => {
                       </span>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <Activity size={48} className="mx-auto text-gray-300 mb-3" aria-hidden="true" />
-                  <p className="text-gray-500">No medications recorded</p>
-                </div>
-              )}
+                ))}
+              </div>
+            )}
+
+            {/* Quick info about common asthma meds */}
+            <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <h4 className="text-sm font-semibold text-blue-800 mb-2">💊 Common Asthma Medications</h4>
+              <p className="text-xs text-blue-700">
+                Patients typically use rescue inhalers (albuterol) and controller medications (ICS, LABA, leukotriene modifiers).
+                Ask the patient to update their medication list in the mobile app.
+              </p>
             </div>
           </div>
         )}
