@@ -8,12 +8,11 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { io } from 'socket.io-client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import api from '../services/api';
 import { getUser, getToken } from '../utils/storage';
 import EnvironmentalWidget from '../components/EnvironmentalWidget';
-
+import { initializeSocket, disconnectSocket, getSocket } from '../services/socket';
 // ─── inline RiskCard ───────────────────────────────────────────────────────
 function RiskCard({ riskScore, riskLevel }) {
   if (!riskLevel || riskLevel === 'none') {
@@ -108,62 +107,57 @@ export default function DashboardScreen({ navigation }) {
   const [simSteps,        setSimSteps]        = useState(5000);
   const [hasCold,         setHasCold]         = useState(false);
 
-  // ── Socket Connection ──
-  useEffect(() => {
-    const initSocket = async () => {
-      try {
-        const token = await AsyncStorage.getItem('token');
-        const userStr = await AsyncStorage.getItem('user');
-        
-        console.log('🔌 Initializing socket in Dashboard...');
-        console.log('Token exists:', !!token);
-        
-        if (token && userStr) {
-          const userData = JSON.parse(userStr);
-          console.log('User role:', userData.role);
+// ── Socket Connection ──
+// ── Socket Connection ──
+useEffect(() => {
+  const initSocket = async () => {
+    try {
+      const token = await getToken();
+      const userData = await getUser();
+
+      console.log('🔌 Initializing socket in Dashboard...');
+      console.log('Token exists:', !!token);
+
+      if (token && userData) {
+        console.log('User role:', userData.role);
+
+        if (userData.role === 'patient') {
+          // ✅ NE PAS passer token - initializeSocket utilise getToken() elle-même
+          const newSocket = await initializeSocket();
           
-          if (userData.role === 'patient') {
-            const socket = io('http://10.39.163.152:5000');
-            socketRef.current = socket;
+          if (newSocket) {
+            socketRef.current = newSocket;
             
-            socket.on('connect', () => {
-              console.log('✅ Socket connected from Dashboard!');
-              socket.emit('join-patient-room', userData._id);
-              console.log('📡 Joined patient room:', userData._id);
-            });
-            
-            socket.on('doctor_request', (data) => {
+            newSocket.on('doctor_request', (data) => {
               console.log('📨 Doctor request received:', data);
               Alert.alert(
                 'Doctor Request',
                 `Dr. ${data.doctorName} (${data.doctorSpecialty}) wants to be your doctor`,
                 [
                   { text: 'Later', style: 'cancel' },
-                  { text: 'View', onPress: () => navigation.navigate('DoctorRequest') }
+                  { text: 'View', onPress: () => navigation.navigate('DoctorRequest') },
                 ]
               );
             });
             
-            socket.on('connect_error', (error) => {
-              console.log('❌ Socket connection error:', error.message);
-            });
+            console.log('✅ Socket initialized successfully');
+          } else {
+            console.log('⚠️ Failed to initialize socket');
           }
         }
-      } catch (error) {
-        console.error('Socket init error:', error);
       }
-    };
-    
-    initSocket();
-    
-    return () => {
-      if (socketRef.current) {
-        console.log('🔌 Disconnecting socket');
-        socketRef.current.disconnect();
-      }
-    };
-  }, []);
+    } catch (error) {
+      console.error('Socket init error:', error);
+    }
+  };
 
+  initSocket();
+
+  return () => {
+    disconnectSocket();
+    console.log('🔌 Socket disconnected on unmount');
+  };
+}, []);
   // ── Location Permission using Expo Location ──────────────────────────────────
   const requestLocationPermission = async () => {
     try {
@@ -197,7 +191,8 @@ export default function DashboardScreen({ navigation }) {
       setUser(userData);
 
       // Fetch readings
-      const response = await api.get('/readings/patient/me');
+      const response = await api.get('/patients/me');
+      console.log('📊 PROFILE API RESPONSE:', JSON.stringify(response.data, null, 2));
       if (response.data?.length > 0) {
         const latest = response.data[0];
         setHasReadings(true);
@@ -207,10 +202,10 @@ export default function DashboardScreen({ navigation }) {
         });
         if (latest.pef_norm) {
           setPefData({
-            value: Math.round(latest.pef_norm * (userData?.personalBestPef || 400)),
+            value: Math.round(latest.pef_norm * (userData?.personalBestPef || 450)),
             change: null,
           });
-          setSimPef(Math.round(latest.pef_norm * (userData?.personalBestPef || 400)));
+          setSimPef(Math.round(latest.pef_norm * (userData?.personalBestPef || 450)));
         }
         if (latest.mean_hr)  setHeartRate(latest.mean_hr);
         if (latest.aqi)      setAqi(latest.aqi);
@@ -273,7 +268,7 @@ export default function DashboardScreen({ navigation }) {
   const submitReading = async () => {
     setLoading(true);
     try {
-      const token = await getToken();
+      
       const response = await api.post(
         '/readings',
         {
@@ -288,7 +283,7 @@ export default function DashboardScreen({ navigation }) {
           hasCold,
           location: location || null
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        
       );
 
       const { riskScore, riskLevel } = response.data;

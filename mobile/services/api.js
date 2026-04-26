@@ -1,10 +1,10 @@
 // services/api.js
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// Your computer's IP address from the network
-const YOUR_COMPUTER_IP = '10.39.163.152';
+// Your computer's IP address from the network / mobile cnx 10.39.163.152 , fibre cnx 192.168.100.15,
+const YOUR_COMPUTER_IP = '192.168.100.15'; 
 const PORT = '5000';
 
 // For Android Emulator: 10.0.2.2 points to host machine's localhost
@@ -26,27 +26,27 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add token
+// ✅ REQUEST INTERCEPTOR - Adds token to every request
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await SecureStore.getItemAsync('token');
+      const token = await AsyncStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.log('🔑 Token added to request:', config.url);
+      } else {
+        console.log('⚠️ No token for request:', config.url);
       }
-      console.log(`📡 API Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
       return config;
     } catch (error) {
-      console.error('Error adding token to request:', error);
+      console.error('Error adding token:', error);
       return config;
     }
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor for debugging
+// ✅ RESPONSE INTERCEPTOR - For debugging
 api.interceptors.response.use(
   (response) => {
     console.log(`✅ API Response: ${response.status} ${response.config.url}`);
@@ -65,4 +65,5 @@ api.interceptors.response.use(
   }
 );
 
+// ✅ IMPORTANT: Make sure you export the api instance (NOT an object with default)
 export default api;

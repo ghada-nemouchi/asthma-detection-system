@@ -5,7 +5,7 @@ const Reading = require('../models/Reading');
 const User = require('../models/User');
 const Alert = require('../models/Alert');
 const { protect } = require('../middleware/auth');
-
+const { notifyEmergencyContacts } = require('../services/notificationService');
 const FLASK_URL = process.env.FLASK_URL || 'http://localhost:5001';
 
 // ============ HELPER FUNCTIONS ============
@@ -82,7 +82,7 @@ router.post('/', protect, async (req, res) => {
         const {
             night_symptoms,
             day_symptoms,
-            pef,
+            pef,                    // ✅ This is the actual PEF value in L/min from frontend
             relief_use,
             steps,
             mean_hr,
@@ -102,8 +102,10 @@ router.post('/', protect, async (req, res) => {
         const patient = await User.findById(patientId);
         if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-        const personalBest = patient.personalBestPef || 400;
-        const pef_norm = Math.min(pef / personalBest, 1.0);
+        // ✅ FIXED: Use the pef value from req.body
+        const personalBest = patient.personalBestPef || 450;  // Default to 450 L/min
+        const pef_norm = Math.min(pef / personalBest, 1.0);   // Now 'pef' is defined!
+        
         const baselineHr = patient.baselineHr || 70;
         const baselineSteps = patient.baselineSteps || 5000;
         const now = new Date();
@@ -135,9 +137,22 @@ router.post('/', protect, async (req, res) => {
             console.error('ML service unavailable, using rule-based fallback:', err.message);
         }
 
+        // ✅ DEBUG LOGS
+        console.log('📊 ML Risk:', mlRisk, 'ML Level:', mlLevel);
+        console.log('📊 PEF value:', pef, 'Personal Best:', personalBest, 'PEF norm:', pef_norm);
+        console.log('📊 Relief use:', relief_use);
+        console.log('📊 Night symptoms:', night_symptoms, 'Day symptoms:', day_symptoms);
+
         // GINA rule-based safety overrides (always applied on top of ML)
         let finalLevel = mlLevel;
-        if (pef_norm < 0.6 || relief_use > 6) {
+        
+        // FORCE LOW for truly healthy readings (override ML model)
+        if (pef_norm >= 0.8 && relief_use <= 1 && night_symptoms === 0 && day_symptoms === 0) {
+            finalLevel = 'low';
+            console.log('✅ FORCED LOW: Patient appears healthy despite ML prediction');
+        }
+        // Otherwise, proceed with normal GINA rules
+        else if (pef_norm < 0.6 || relief_use > 6) {
             finalLevel = 'critical';
         } else if (relief_use > 2 || night_symptoms > 0) {
             if (finalLevel !== 'critical') finalLevel = 'high';
@@ -145,12 +160,14 @@ router.post('/', protect, async (req, res) => {
             if (finalLevel === 'low') finalLevel = 'medium';
         }
 
-        // Save reading
+        console.log('📊 Final level after GINA:', finalLevel);
+
+        // ✅ Save reading with pef_norm only (as your schema requires)
         const reading = new Reading({
             patientId,
             night_symptoms,
             day_symptoms,
-            pef_norm,
+            pef_norm,                    // ✅ Store normalized value
             relief_use,
             steps:         steps         || 0,
             mean_hr:       mean_hr       || 0,
@@ -168,12 +185,21 @@ router.post('/', protect, async (req, res) => {
             riskScore:  mlRisk,
             lastReading: now,
             $inc: { readingCount: 1 },
-            // Only set baselines on first reading
             ...(mean_hr && !patient.baselineHr   && { baselineHr:    mean_hr }),
             ...(steps  && !patient.baselineSteps && { baselineSteps: steps   }),
         });
-
-        // Alert doctor if high / critical
+        // 🚨 TRIGGER EMERGENCY NOTIFICATIONS IF CRITICAL
+        if (finalLevel === 'critical') {
+            console.log('🚨 CRITICAL RISK DETECTED! Notifying emergency contacts...');
+            await notifyEmergencyContacts(patientId, {
+                pef: pef,
+                relief_use: relief_use,
+                night_symptoms: night_symptoms,
+                day_symptoms: day_symptoms,
+                pef_norm: pef_norm
+            });
+        }
+        // Alert doctor if high / critical AND send push notification
         if (finalLevel === 'high' || finalLevel === 'critical') {
             const alert = new Alert({
                 patientId,
@@ -186,6 +212,7 @@ router.post('/', protect, async (req, res) => {
             });
             await alert.save();
 
+            // Socket.io to doctor dashboard
             const io = req.app.get('io');
             if (io) {
                 io.to('doctors').emit('new_alert', {
@@ -200,9 +227,28 @@ router.post('/', protect, async (req, res) => {
                     }
                 });
             }
+            
+            // PUSH NOTIFICATION to patient's phone
+            if (patient.fcmToken) {
+                const fetch = require('node-fetch');
+                await fetch('https://exp.host/--/api/v2/push/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: patient.fcmToken,
+                        title: finalLevel === 'critical' ? '🚨 CRITICAL ALERT' : '⚠️ High Risk Alert',
+                        body: finalLevel === 'critical' 
+                            ? 'Immediate attention needed! Take rescue inhaler.'
+                            : 'Your risk level is high. Monitor symptoms closely.',
+                        data: { riskLevel: finalLevel, riskScore: mlRisk }
+                    })
+                });
+                console.log('📱 Push notification sent to patient');
+            }
         }
 
         res.status(201).json({
+            success: true,
             reading,
             riskScore: mlRisk,
             riskLevel: finalLevel,
@@ -213,7 +259,6 @@ router.post('/', protect, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 // GET /api/readings/patient/me – logged-in patient's own history
 router.get('/patient/me', protect, async (req, res) => {
     try {

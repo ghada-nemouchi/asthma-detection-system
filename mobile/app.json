@@ -1,5 +1,39 @@
 {
-  "plugins": [
-    "expo-secure-store"
-  ]
+  "expo": {
+    "name": "AsthmiCare",
+    "slug": "asthmicare",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "AsthmiCare needs your location to show local weather and air quality data for asthma management."
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow AsthmiCare to access your location for local weather and air quality data to help manage your asthma.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "locationWhenInUsePermission": "Allow AsthmiCare to use your location to show you local weather conditions."
+        }
+      ]
+    ]
+  }
 }

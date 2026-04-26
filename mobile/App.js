@@ -4,8 +4,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, Text, View, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io } from 'socket.io-client';
+import { initializeSocket, disconnectSocket } from './services/socket';
+import { getUser } from './utils/storage';
+import { registerForPushNotificationsAsync } from './services/notifications';
 
 // Import all screens
 import LoginScreen from './screens/LoginScreen';
@@ -15,9 +16,10 @@ import ProfileScreen from './screens/ProfileScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import SymptomsLog from './screens/SymptomsLog';
 import DoctorRequestScreen from './screens/DoctorRequestScreen';
+import PersonalBestScreen from './screens/PersonalBestScreen';
+import EmergencyContactsScreen from './screens/EmergencyContactsScreen';
 
 const Stack = createStackNavigator();
-let socket = null;
 
 // Custom Header with Navigation Buttons
 function CustomHeader({ navigation, route }) {
@@ -26,6 +28,7 @@ function CustomHeader({ navigation, route }) {
     if (route.name === 'History') return 'Reading History';
     if (route.name === 'Profile') return 'My Profile';
     if (route.name === 'DoctorRequest') return 'Doctor Requests';
+    if (route.name === 'PersonalBest') return 'Personal Best PEF';
     return 'AsthmiCare';
   };
 
@@ -47,7 +50,7 @@ function CustomHeader({ navigation, route }) {
       <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#fff' }}>
         {getTitle()}
       </Text>
-
+      
       <View style={{ flexDirection: 'row' }}>
         <TouchableOpacity onPress={() => navigation.navigate('History')} style={{ padding: 8, marginRight: 8, alignItems: 'center' }}>
           <Ionicons name="time" size={24} color="#fff" />
@@ -62,62 +65,35 @@ function CustomHeader({ navigation, route }) {
   );
 }
 
-// Socket Connection Component
+// Socket Manager Component
 function SocketManager({ navigation }) {
   useEffect(() => {
-    const initSocket = async () => {
-      try {
-        const token = await AsyncStorage.getItem('token');
-        const userStr = await AsyncStorage.getItem('user');
+    const setupSocket = async () => {
+      await registerForPushNotificationsAsync();
+      const user = await getUser();
+      if (user) {
+        const socket = await initializeSocket();
         
-        console.log('🔌 Initializing socket...');
-        console.log('Token exists:', !!token);
-        
-        if (token && userStr) {
-          const user = JSON.parse(userStr);
-          console.log('User role:', user.role);
-          console.log('User ID:', user._id);
-          
-          if (user.role === 'patient') {
-            // Connect to socket server - use your backend IP
-            socket = io('http://10.39.163.152:5000');
-            console.log('🔌 Socket connecting to http://10.39.163.152:5000');
-            
-            socket.on('connect', () => {
-              console.log('✅ Socket connected!');
-              socket.emit('join-patient-room', user._id);
-              console.log('📡 Joined patient room:', user._id);
-            });
-            
-            socket.on('doctor_request', (data) => {
-              console.log('📨 Doctor request received:', data);
-              Alert.alert(
-                'Doctor Request',
-                `Dr. ${data.doctorName} (${data.doctorSpecialty}) wants to be your doctor`,
-                [
-                  { text: 'Later', style: 'cancel' },
-                  { text: 'View', onPress: () => navigation.navigate('DoctorRequest') }
-                ]
-              );
-            });
-            
-            socket.on('connect_error', (error) => {
-              console.log('❌ Socket connection error:', error.message);
-            });
-          }
+        if (socket && user.role === 'patient') {
+          socket.on('doctor_request', (data) => {
+            console.log('📨 Doctor request received:', data);
+            Alert.alert(
+              'Doctor Request',
+              `Dr. ${data.doctorName} (${data.doctorSpecialty}) wants to be your doctor`,
+              [
+                { text: 'Later', style: 'cancel' },
+                { text: 'View', onPress: () => navigation?.navigate('DoctorRequest') }
+              ]
+            );
+          });
         }
-      } catch (error) {
-        console.error('Socket init error:', error);
       }
     };
     
-    initSocket();
+    setupSocket();
     
     return () => {
-      if (socket) {
-        console.log('🔌 Disconnecting socket');
-        socket.disconnect();
-      }
+      disconnectSocket();
     };
   }, [navigation]);
   
@@ -147,6 +123,7 @@ export default function App() {
           component={DashboardScreen} 
           options={({ navigation }) => ({
             header: () => <CustomHeader navigation={navigation} route={{ name: 'Home' }} />,
+
           })}
         />
         <Stack.Screen 
@@ -179,6 +156,18 @@ export default function App() {
             headerTintColor: '#fff',
             headerTitleStyle: { fontWeight: 'bold' }
           }} 
+        />
+        <Stack.Screen 
+          name="PersonalBest" 
+          component={PersonalBestScreen} 
+          options={({ navigation }) => ({
+            header: () => <CustomHeader navigation={navigation} route={{ name: 'PersonalBest' }} />,
+          })}
+        />
+        <Stack.Screen 
+          name="EmergencyContacts" 
+          component={EmergencyContactsScreen} 
+          options={{ title: 'Emergency Contacts' }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -18,6 +18,7 @@ router.get('/user/:id', protect, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
 // GET /api/patients/me – Patient gets their own profile
 router.get('/me', protect, async (req, res) => {
   try {
@@ -92,7 +93,19 @@ router.get('/me', protect, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
+// PUT /api/patients/:id/fcm - Update FCM token
+router.put('/:id/fcm', protect, async (req, res) => {
+  try {
+    const patient = await User.findByIdAndUpdate(
+      req.params.id,
+      { fcmToken: req.body.fcmToken },
+      { new: true }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // PUT /api/patients/me – Patient updates their own profile
 router.put('/me', protect, async (req, res) => {
   try {
@@ -130,6 +143,127 @@ router.put('/me', protect, async (req, res) => {
   }
 });
 
+// POST /api/patients/me/personal-best - Calculate personal best from readings
+router.post('/me/personal-best', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Patient only' });
+    }
+
+    // Get last 21 days of readings (3 weeks)
+    const threeWeeksAgo = new Date();
+    threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+    
+    const readings = await Reading.find({
+      patientId: req.user.id,
+      timestamp: { $gte: threeWeeksAgo },
+      pef_norm: { $ne: null }
+    }).sort({ pef_norm: -1 }); // Sort by highest PEF first
+
+    if (readings.length === 0) {
+      return res.json({
+        success: false,
+        message: 'Not enough readings. Please submit daily readings for 2-3 weeks.',
+        requiredDays: 14,
+        currentDays: readings.length
+      });
+    }
+
+      // Get the highest normalized value
+    const highestPefNorm = readings[0].pef_norm;
+    // Calculate actual PEF value using current personal best as reference
+    let personalBestPef ; // default
+    const DEFAULT_PEF = 450; 
+    if (req.user.personalBestPef && req.user.personalBestPef !== DEFAULT_PEF) {
+      personalBestPef = Math.round(highestPefNorm * req.user.personalBestPef);
+    } else {
+      // Estimate based on age/gender if needed
+      personalBestPef = Math.round(highestPefNorm * DEFAULT_PEF);
+    }
+
+    // Update user
+    await User.findByIdAndUpdate(req.user.id, {
+      personalBestPef: personalBestPef,
+      personalBestStatus: 'calculated',
+      personalBestLastCalculated: new Date(),
+      personalBestReadings: readings.slice(0, 14).map(r => ({
+        value: r.pef_norm,
+        date: r.timestamp
+      }))
+    });
+
+    res.json({
+      success: true,
+      personalBestPef: personalBestPef,
+      message: `Your personal best PEF is ${personalBestPef} L/min`,
+      readingsUsed: readings.length,
+      highestReading: Math.round(highestPefNorm * personalBestPef)
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/patients/me/personal-best-status - Check status
+router.get('/me/personal-best-status', protect, async (req, res) => {
+  try {
+    const patient = await User.findById(req.user.id);
+    const readingsLast3Weeks = await Reading.countDocuments({
+      patientId: req.user.id,
+      timestamp: { $gte: new Date(Date.now() - 21 * 86400000) }
+    });
+
+    let status = {
+      hasPersonalBest: !!patient.personalBestPef,
+      personalBestValue: patient.personalBestPef,
+      status: patient.personalBestStatus,
+      lastCalculated: patient.personalBestLastCalculated,
+      readingsInLast3Weeks: readingsLast3Weeks,
+      neededReadings: 14,
+      isExpired: false
+    };
+
+    // Check if expired (6 months)
+    if (patient.personalBestLastCalculated) {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      status.isExpired = patient.personalBestLastCalculated < sixMonthsAgo;
+    }
+
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// ============ DEBUG ENDPOINT ============
+router.get('/me/debug-readings', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Patient only' });
+    }
+    
+    const readings = await Reading.find({ 
+      patientId: req.user.id 
+    }).sort({ timestamp: -1 }).limit(10);
+    
+    const patient = await User.findById(req.user.id);
+    
+    res.json({
+      readingCount: readings.length,
+      personalBestPef: patient.personalBestPef,
+      readings: readings.map(r => ({
+        pef_norm: r.pef_norm,
+        timestamp: r.timestamp,
+        actualPef: patient.personalBestPef ? 
+          Math.round(r.pef_norm * patient.personalBestPef) : 
+          'unknown (no personal best)'
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // GET /api/patients/me/readings – Patient gets their own readings
 router.get('/me/readings', protect, async (req, res) => {
   try {

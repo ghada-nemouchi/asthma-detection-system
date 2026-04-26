@@ -8,45 +8,38 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// ===== IMPORT ROUTES FIRST =====
+// ===== IMPORT ROUTES =====
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const readingRoutes = require('./routes/readings');
 const alertRoutes = require('./routes/alerts');
 const environmentalRoutes = require('./routes/environmental');
+const emergencyContactsRoutes = require('./routes/emergencyContacts');
 
+// ===== SOCKET.IO SETUP =====
 const io = socketIo(server, {
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    origin: ['http://localhost:5173', 'http://localhost:3000', '*'],
     credentials: true,
   },
 });
 
-// Allow all origins for development (temporary fix)
-app.use(cors({
-  origin: '*',
-  credentials: true,
-}));
-
 // Make io accessible to routes
 app.set('io', io);
 
-// Middleware – explicit CORS options
+// ===== MIDDLEWARE (ORDER MATTERS!) =====
+// 1. CORS first
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', '*'],
   credentials: true,
 }));
+
+// 2. Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ===== USE ROUTES AFTER IMPORT =====
-app.use('/api/environmental', environmentalRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/readings', readingRoutes);
-app.use('/api/patients', patientRoutes);
-app.use('/api/alerts', alertRoutes);
-
-// Test routes
+// ===== ROUTES =====
+// Public routes
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -54,6 +47,14 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// API routes (order doesn't matter much, but keep them together)
+app.use('/api/auth', authRoutes);
+app.use('/api/patients', patientRoutes);
+app.use('/api/readings', readingRoutes);
+app.use('/api/alerts', alertRoutes);
+app.use('/api/environmental', environmentalRoutes);
+app.use('/api', emergencyContactsRoutes);  // ← This handles /api/emergency-contacts
 
 // Test DB endpoint
 app.get('/api/test-db', async (req, res) => {
@@ -72,7 +73,7 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-// MongoDB Connection
+// ===== MONGODB CONNECTION =====
 const connectDB = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
@@ -91,7 +92,7 @@ const connectDB = async () => {
 
 connectDB();
 
-// Socket.io connection
+// ===== SOCKET.IO EVENT HANDLERS =====
 io.on('connection', (socket) => {
   console.log('🔌 New client connected:', socket.id);
   
@@ -110,6 +111,7 @@ io.on('connection', (socket) => {
   });
 });
 
+// ===== START SERVER =====
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Server running on port ${PORT}`);

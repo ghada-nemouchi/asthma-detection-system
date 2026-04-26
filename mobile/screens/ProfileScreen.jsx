@@ -1,4 +1,4 @@
-// screens/ProfileScreen.jsx - Updated to use /api/patients/me
+// screens/ProfileScreen.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { removeToken, removeUser } from '../utils/storage';
 import api from '../services/api';
+import { Ionicons } from '@expo/vector-icons'; 
 
 const ProfileScreen = ({ navigation }) => {
   const [profile, setProfile] = useState(null);
@@ -18,7 +19,7 @@ const ProfileScreen = ({ navigation }) => {
     try {
       console.log('📱 Fetching patient profile from backend...');
       
-      // Fetch patient profile from new endpoint
+      // Fetch patient profile
       const response = await api.get('/patients/me');
       
       console.log('✅ Profile fetched:', response.data);
@@ -27,9 +28,15 @@ const ProfileScreen = ({ navigation }) => {
         setProfile(response.data.user);
         setStats(response.data.stats);
         
-        // Fetch doctor info if patient has a doctor
-        if (response.data.user.doctorId) {
-          await fetchMyDoctor(response.data.user.doctorId);
+        // ✅ FIXED: Fetch doctor info INSIDE loadProfile
+        const doctorId = response.data.user.doctorId;
+        if (doctorId) {
+          try {
+            const doctorResponse = await api.get(`/patients/user/${doctorId}`);
+            setMyDoctor(doctorResponse.data);
+          } catch (err) {
+            console.error('Error fetching doctor:', err);
+          }
         }
       } else {
         throw new Error('Failed to load profile');
@@ -40,16 +47,6 @@ const ProfileScreen = ({ navigation }) => {
       Alert.alert('Error', 'Failed to load profile. Please check your connection.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch doctor info
-  const fetchMyDoctor = async (doctorId) => {
-    try {
-      const doctorResponse = await api.get(`/patients/user/${response.data.user.doctorId}`);
-      setMyDoctor(doctorResponse.data);
-    } catch (error) {
-      console.error('Error fetching doctor:', error);
     }
   };
 
@@ -214,19 +211,31 @@ const ProfileScreen = ({ navigation }) => {
 
       {/* Action Buttons */}
       <TouchableOpacity 
+        style={styles.emergencyButton}
+        onPress={() => navigation.navigate('EmergencyContacts')}
+      >
+        <Ionicons name="alert-circle" size={24} color="#ef4444" />
+        <Text style={styles.emergencyButtonText}>Emergency Contacts</Text>
+      </TouchableOpacity>
+      <TouchableOpacity 
         style={styles.editButton} 
         onPress={() => Alert.alert('Coming Soon', 'Profile editing will be available in the next update!')}
       >
         <Text style={styles.editButtonText}>Edit Profile</Text>
       </TouchableOpacity>
-
+      <TouchableOpacity 
+        style={styles.personalBestButton}
+        onPress={() => navigation.navigate('PersonalBest')}
+      >
+        <Text style={styles.personalBestButtonText}>🎯 Set Personal Best PEF</Text>
+      </TouchableOpacity>
       <TouchableOpacity 
         style={styles.logoutButton} 
         onPress={handleLogout}
       >
         <Text style={styles.logoutButtonText}>Logout</Text>
       </TouchableOpacity>
-
+     
       {/* Footer */}
       <Text style={styles.footer}>
         AsthmiCare • Keeping you breathing easy
@@ -405,6 +414,24 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     fontWeight: 'bold' 
   },
+    personalBestButton: { 
+    backgroundColor: '#10b981',  // Green color - more visible!
+    marginHorizontal: 16, 
+    marginBottom: 12, 
+    padding: 16, 
+    borderRadius: 12, 
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  personalBestButtonText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: 'bold' 
+  },
   logoutButton: { 
     backgroundColor: '#ef4444', 
     marginHorizontal: 16, 
@@ -417,6 +444,22 @@ const styles = StyleSheet.create({
     color: '#fff', 
     fontSize: 16, 
     fontWeight: 'bold' 
+  },
+  emergencyButton: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  emergencyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ef4444',
   },
   footer: {
     textAlign: 'center',
