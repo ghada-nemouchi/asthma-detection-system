@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import VitalsChart from '../components/VitalsChart';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const PatientDetail = () => {
   const { patientId } = useParams();
@@ -64,7 +66,58 @@ const PatientDetail = () => {
     console.error('🔴 Error fetching readings:', err);
   }
 };
-
+    // Handle export report
+  const handleExport = async () => {
+    try {
+      console.log('🔵 EXPORT BUTTON CLICKED!');
+      const response = await api.get(`/patients/${patientId}/export`, {
+        responseType: 'blob'
+      });
+      
+      // Read the CSV data
+      const csvText = await response.data.text();
+      const lines = csvText.split('\n');
+      const headers = lines[0].split(',');
+      const rows = lines.slice(1).filter(line => line.trim()).map(line => line.split(','));
+      
+      // Create PDF
+      const doc = new jsPDF({ orientation: 'landscape' });
+      
+      // Add title
+      doc.setFontSize(18);
+      doc.text(`Patient Report: ${patient?.name || patientId}`, 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+      
+      // Add table
+      
+      autoTable(doc, {
+        head: [headers],
+        body: rows,
+        startY: 40,
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 20 },
+          6: { cellWidth: 20 }
+        }
+      });
+      
+      // Save PDF
+      doc.save(`patient-${patient?.name || patientId}-report.pdf`);
+      alert('PDF Report downloaded successfully');
+      
+    } catch (err) {
+      console.error('Error exporting report:', err);
+      alert('Failed to download report: ' + (err.response?.data?.message || err.message));
+    }
+  };
   // Fetch alerts for this patient
   const fetchAlerts = async () => {
     try {
@@ -117,16 +170,19 @@ const PatientDetail = () => {
   }, [readings]);
 
   // Handle delete patient
+  // Handle remove patient from doctor's list
   const handleDelete = async () => {
     try {
-      await api.delete(`/patients/${patientId}`);
+      const response = await api.delete(`/patients/${patientId}`);
       navigate('/dashboard', { 
         replace: true,
-        state: { message: 'Patient deleted successfully' }
+        state: { 
+          message: response.data.message || 'Patient removed from your list'
+        }
       });
     } catch (err) {
-      console.error('Error deleting patient:', err);
-      setError('Failed to delete patient');
+      console.error('Error removing patient:', err);
+      setError('Failed to remove patient');
     }
   };
 
@@ -192,7 +248,10 @@ const PatientDetail = () => {
             </div>
           </div>
           <div className="flex gap-3">
-            <button className="bg-white border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2">
+            <button 
+              onClick={handleExport}
+              className="bg-white border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2 cursor-pointer"
+              style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
               <Download size={18} />
               Export Report
             </button>

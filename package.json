@@ -7,6 +7,8 @@
     "axios": "^1.15.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^1.8.0",
     "mongodb": "4.1",
     "react": "^18.2.0",

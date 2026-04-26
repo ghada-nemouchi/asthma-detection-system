@@ -3,7 +3,9 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Reading = require('../models/Reading');
+const Alert = require('../models/Alert'); 
 const { protect, doctorOnly } = require('../middleware/auth');
+
 
 // ============ PATIENT SELF-ACCESS ENDPOINTS ============
 router.get('/user/:id', protect, async (req, res) => {
@@ -390,6 +392,39 @@ router.get('/', protect, doctorOnly, async (req, res) => {
 });
 
 // ✅ PENDING REQUEST - MUST COME BEFORE /:id
+// GET /api/patients/:id/export – Export patient report as PDF/CSV
+router.get('/:id/export', protect, doctorOnly, async (req, res) => {
+  try {
+    
+    const patient = await User.findOne({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    const readings = await Reading.find({ patientId: req.params.id }).sort({ timestamp: -1 });
+    
+    // Generate CSV report
+    let csv = 'Date,Risk Level,Risk Score,PEF %,Reliever Use,Night Symptoms,Day Symptoms\n';
+    
+    readings.forEach(reading => {
+      csv += `${new Date(reading.timestamp).toLocaleDateString()},`;
+      csv += `${reading.riskLevel},`;
+      csv += `${Math.round((reading.riskScore || 0) * 100)}%,`;
+      csv += `${Math.round((reading.pef_norm || 0) * 100)}%,`;
+      csv += `${reading.relief_use || 0},`;
+      csv += `${reading.night_symptoms || 0},`;
+      csv += `${reading.day_symptoms || 0}\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=patient-${patient.name}-report.csv`);
+    res.send(csv);
+    
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
 router.get('/pending-request', protect, async (req, res) => {
   try {
     console.log('📍 Pending request check for user:', req.user._id);
@@ -420,7 +455,7 @@ router.get('/pending-request', protect, async (req, res) => {
 // ✅ /:id/alerts BEFORE /:id
 router.get('/:id/alerts', protect, doctorOnly, async (req, res) => {
   try {
-    const Alert = require('../models/Alert');
+    
     const alerts = await Alert.find({ patientId: req.params.id })
       .sort({ createdAt: -1 })
       .limit(50);
@@ -477,16 +512,52 @@ router.put('/:id', protect, doctorOnly, async (req, res) => {
   }
 });
 
+// DELETE /api/patients/:id – doctor removes a patient from their list (does NOT delete the patient account)
 router.delete('/:id', protect, doctorOnly, async (req, res) => {
   try {
-    const patient = await User.findOneAndDelete({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
-    if (!patient) return res.status(404).json({ message: 'Patient not found' });
-    res.json({ message: 'Patient removed' });
+    const patient = await User.findOne({ _id: req.params.id, doctorId: req.user._id, role: 'patient' });
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found under your care' });
+    }
+
+    // ✅ Remove association ONLY - don't delete the patient account
+    patient.doctorId = null;
+    patient.doctorRequested = null;
+    patient.doctorRequestStatus = 'none';
+    patient.doctorRequestDate = null;
+    await patient.save();
+
+    res.json({ 
+      success: true,
+      message: 'Patient removed from your list. The patient account remains active.'
+    });
+  } catch (error) {
+    console.error('Error removing patient:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+// DELETE /api/patients/:id/permanent – permanently delete patient account (ADMIN ONLY)
+router.delete('/:id/permanent', protect, async (req, res) => {
+  try {
+    // Check if user is admin (you may need to add admin role)
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    
+    const patient = await User.findByIdAndDelete(req.params.id);
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+    
+    // Also delete all readings and alerts for this patient
+    await Reading.deleteMany({ patientId: req.params.id });
+    await Alert.deleteMany({ patientId: req.params.id });
+    
+    res.json({ message: 'Patient account permanently deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
-
 router.post('/request/:patientId', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.findOne({ 
