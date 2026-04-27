@@ -15,6 +15,7 @@ const readingRoutes = require('./routes/readings');
 const alertRoutes = require('./routes/alerts');
 const environmentalRoutes = require('./routes/environmental');
 const emergencyContactsRoutes = require('./routes/emergencyContacts');
+const medicationRoutes = require('./routes/medications');
 
 // ===== SOCKET.IO SETUP =====
 const io = socketIo(server, {
@@ -55,7 +56,7 @@ app.use('/api/readings', readingRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/environmental', environmentalRoutes);
 app.use('/api', emergencyContactsRoutes);  // ← This handles /api/emergency-contacts
-
+app.use('/api/medications', medicationRoutes);
 // Test DB endpoint
 app.get('/api/test-db', async (req, res) => {
   try {

@@ -6,21 +6,93 @@ import {
 import api from '../services/api';
 
 export default function PersonalBestScreen({ navigation }) {
+  // ✅ ALL HOOKS FIRST - top level, unconditional
   const [status, setStatus] = useState(null);
+  const [allReadings, setAllReadings] = useState([]);
+  const [truePersonalBest, setTruePersonalBest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showEducation, setShowEducation] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [recentReadings, setRecentReadings] = useState([]);
 
+  // Load data on mount
   useEffect(() => {
-    loadStatus();
+    loadData();
   }, []);
 
-  const loadStatus = async () => {
+  // Load recent readings after data changes
+  useEffect(() => {
+    if (!loading && allReadings.length > 0) {
+      const loadRecentReadings = async () => {
+        const readings = await getRecentReadings();
+        setRecentReadings(readings);
+      };
+      loadRecentReadings();
+    }
+  }, [loading, allReadings]);
+
+  // Helper function to get recent readings with PEF values
+  const getRecentReadings = async () => {
+    if (!allReadings || allReadings.length === 0) return [];
+    
     try {
-      const response = await api.get('/patients/me/personal-best-status');
-      setStatus(response.data);
+      const profileResponse = await api.get('/patients/me');
+      const personalBestPef = profileResponse.data.user?.personalBestPef || 400;
+      
+      return allReadings.slice(-7).reverse().map(reading => {
+        let pefValue = null;
+        if (reading.pef_norm !== undefined && reading.pef_norm !== null) {
+          pefValue = Math.round(reading.pef_norm * personalBestPef);
+        }
+        
+        return {
+          date: new Date(reading.timestamp || reading.createdAt || reading.date).toLocaleDateString(),
+          pef: pefValue,
+          riskLevel: reading.riskLevel
+        };
+      }).filter(r => r.pef !== null);
     } catch (error) {
-      console.error('Error loading status:', error);
+      console.error('Error getting recent readings:', error);
+      return [];
+    }
+  };
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Get personal best status from backend
+      const statusResponse = await api.get('/patients/me/personal-best-status');
+      setStatus(statusResponse.data);
+      
+      // 2. Get ALL readings
+      const readingsResponse = await api.get('/readings/patient/me');
+      const readings = readingsResponse.data;
+      setAllReadings(readings);
+      
+      // 3. Calculate TRUE personal best from readings
+      if (readings && readings.length > 0) {
+        const profileResponse = await api.get('/patients/me');
+        const personalBestPef = profileResponse.data.user?.personalBestPef || 400;
+        
+        const pefValues = readings
+          .filter(reading => reading.pef_norm !== undefined && reading.pef_norm !== null)
+          .map(reading => Math.round(reading.pef_norm * personalBestPef));
+        
+        if (pefValues.length > 0) {
+          const maxPEF = Math.max(...pefValues);
+          setTruePersonalBest(maxPEF);
+          console.log('📊 Personal Best from profile:', personalBestPef);
+          console.log('📊 Calculated PEF values from readings:', pefValues);
+          console.log('🎯 True Personal Best (max from readings):', maxPEF);
+        } else {
+          console.log('⚠️ No pef_norm values found in readings');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error loading data:', error);
+      Alert.alert('Error', 'Failed to load personal best data');
     } finally {
       setLoading(false);
     }
@@ -31,10 +103,11 @@ export default function PersonalBestScreen({ navigation }) {
     try {
       const response = await api.post('/patients/me/personal-best');
       if (response.data.success) {
+        await loadData();
         Alert.alert(
           '✅ Personal Best Calculated!',
-          `${response.data.message}\n\nBased on ${response.data.readingsUsed} readings over the past 3 weeks.`,
-          [{ text: 'OK', onPress: () => loadStatus() }]
+          `${response.data.message}\n\nBased on ${response.data.readingsUsed} readings over the past 3 weeks.\nYour new personal best: ${response.data.newPersonalBest} L/min`,
+          [{ text: 'OK' }]
         );
       } else {
         Alert.alert(
@@ -44,6 +117,7 @@ export default function PersonalBestScreen({ navigation }) {
         );
       }
     } catch (error) {
+      console.error('Calculation error:', error);
       Alert.alert('Error', 'Failed to calculate personal best');
     } finally {
       setCalculating(false);
@@ -51,15 +125,19 @@ export default function PersonalBestScreen({ navigation }) {
   };
 
   const getZoneInfo = () => {
-    if (!status?.personalBestValue) return null;
-    const pb = status.personalBestValue;
+    const pbValue = truePersonalBest || status?.personalBestValue || 400;
+    
+    if (!pbValue) return null;
+    
     return {
-      green: { min: pb * 0.8, max: pb, color: '#10b981', label: 'Good Control' },
-      yellow: { min: pb * 0.5, max: pb * 0.8, color: '#f59e0b', label: 'Caution' },
-      red: { min: 0, max: pb * 0.5, color: '#ef4444', label: 'Medical Alert' }
+      value: pbValue,
+      green: { min: pbValue * 0.8, max: pbValue, color: '#10b981', label: 'Good Control' },
+      yellow: { min: pbValue * 0.5, max: pbValue * 0.8, color: '#f59e0b', label: 'Caution' },
+      red: { min: 0, max: pbValue * 0.5, color: '#ef4444', label: 'Medical Alert' }
     };
   };
 
+  // ✅ Early return AFTER all hooks
   if (loading) {
     return (
       <View style={styles.center}>
@@ -69,6 +147,7 @@ export default function PersonalBestScreen({ navigation }) {
   }
 
   const zones = getZoneInfo();
+  const bestFromReadings = truePersonalBest || status?.personalBestValue || 400;
 
   return (
     <ScrollView style={styles.container}>
@@ -78,29 +157,32 @@ export default function PersonalBestScreen({ navigation }) {
         <Text style={styles.subtitle}>Your Peak Flow Benchmark</Text>
       </View>
 
-      {/* Current Status Card */}
+      {/* Current Best Value */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Current Status</Text>
+        <Text style={styles.cardTitle}>🏆 Your Personal Best</Text>
+        <Text style={styles.pbValue}>{bestFromReadings} L/min</Text>
+        <Text style={styles.pbSubtext}>
+          Based on {allReadings.length} total readings
+        </Text>
         
-        {status?.hasPersonalBest ? (
-          <>
-            <Text style={styles.pbValue}>{status.personalBestValue} L/min</Text>
-            <Text style={styles.pbDate}>
-              Calculated: {new Date(status.lastCalculated).toLocaleDateString()}
+        {status?.lastCalculated && (
+          <Text style={styles.pbDate}>
+            Last calculated: {new Date(status.lastCalculated).toLocaleDateString()}
+          </Text>
+        )}
+        
+        {truePersonalBest && status?.personalBestValue && truePersonalBest > status.personalBestValue && (
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>
+              🎉 Your true best ({truePersonalBest} L/min) is higher than stored ({status.personalBestValue} L/min)!
+              Click "Recalculate" below to update.
             </Text>
-            {status.isExpired && (
-              <View style={styles.warningBox}>
-                <Text style={styles.warningText}>⚠️ This value is over 6 months old. Consider recalculating!</Text>
-              </View>
-            )}
-          </>
-        ) : (
-          <View style={styles.noDataBox}>
-            <Text style={styles.noDataText}>📊 No personal best set yet</Text>
-            <Text style={styles.noDataSubtext}>
-              We need {status?.neededReadings || 14} days of readings to calculate your personal best.
-              Current readings: {status?.readingsInLast3Weeks || 0} days
-            </Text>
+          </View>
+        )}
+        
+        {status?.isExpired && (
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>⚠️ This value is over 6 months old. Consider recalculating!</Text>
           </View>
         )}
       </View>
@@ -109,6 +191,9 @@ export default function PersonalBestScreen({ navigation }) {
       {zones && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📊 Your Asthma Zones</Text>
+          <Text style={styles.zoneNote}>
+            Based on personal best: {Math.round(zones.value)} L/min
+          </Text>
           <View style={styles.zoneContainer}>
             <View style={[styles.zoneBar, { backgroundColor: zones.green.color, flex: 0.5 }]}>
               <Text style={styles.zoneLabel}>Green Zone</Text>
@@ -126,6 +211,29 @@ export default function PersonalBestScreen({ navigation }) {
               <Text style={styles.zoneDesc}>{zones.red.label}</Text>
             </View>
           </View>
+        </View>
+      )}
+
+      {/* Recent Readings */}
+      {recentReadings.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📈 Recent Peak Flow Readings</Text>
+          {recentReadings.map((reading, index) => (
+            <View key={index} style={styles.readingRow}>
+              <Text style={styles.readingDate}>{reading.date}</Text>
+              <Text style={[
+                styles.readingValue,
+                reading.pef >= (zones?.green?.min || 0) ? styles.greenText :
+                reading.pef >= (zones?.yellow?.min || 0) ? styles.yellowText :
+                styles.redText
+              ]}>
+                {reading.pef} L/min
+              </Text>
+              {reading.riskLevel && (
+                <Text style={styles.readingRisk}>{reading.riskLevel}</Text>
+              )}
+            </View>
+          ))}
         </View>
       )}
 
@@ -216,18 +324,34 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: '#fff', opacity: 0.9, marginTop: 5 },
   card: { backgroundColor: '#fff', margin: 15, padding: 20, borderRadius: 16, elevation: 2 },
   cardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#333' },
-  pbValue: { fontSize: 48, fontWeight: 'bold', color: '#547bfb', textAlign: 'center' },
+  pbValue: { fontSize: 52, fontWeight: 'bold', color: '#547bfb', textAlign: 'center' },
+  pbSubtext: { fontSize: 12, color: '#999', textAlign: 'center', marginTop: 5 },
   pbDate: { fontSize: 12, color: '#999', textAlign: 'center', marginTop: 5 },
+  zoneNote: { fontSize: 12, color: '#666', textAlign: 'center', marginBottom: 12 },
   warningBox: { backgroundColor: '#fef3c7', padding: 12, borderRadius: 10, marginTop: 15 },
   warningText: { color: '#92400e', fontSize: 12 },
   noDataBox: { alignItems: 'center', padding: 20 },
   noDataText: { fontSize: 18, color: '#666', marginBottom: 10 },
   noDataSubtext: { fontSize: 14, color: '#999', textAlign: 'center' },
-  zoneContainer: { flexDirection: 'row', height: 120, borderRadius: 12, overflow: 'hidden' },
+  zoneContainer: { flexDirection: 'row', height: 120, borderRadius: 12, overflow: 'hidden', marginTop: 10 },
   zoneBar: { padding: 10, justifyContent: 'center', alignItems: 'center' },
   zoneLabel: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
   zoneRange: { color: '#fff', fontSize: 10, marginTop: 4 },
   zoneDesc: { color: '#fff', fontSize: 10, marginTop: 2 },
+  readingRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb'
+  },
+  readingDate: { fontSize: 12, color: '#666', flex: 1 },
+  readingValue: { fontSize: 16, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  readingRisk: { fontSize: 12, color: '#999', flex: 1, textAlign: 'right' },
+  greenText: { color: '#10b981' },
+  yellowText: { color: '#f59e0b' },
+  redText: { color: '#ef4444' },
   calculateButton: { backgroundColor: '#547bfb', margin: 15, padding: 16, borderRadius: 12, alignItems: 'center' },
   calculateButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   educationButton: { backgroundColor: '#e5e7eb', marginHorizontal: 15, marginBottom: 30, padding: 16, borderRadius: 12, alignItems: 'center' },

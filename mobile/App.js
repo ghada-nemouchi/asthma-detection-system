@@ -18,6 +18,7 @@ import SymptomsLog from './screens/SymptomsLog';
 import DoctorRequestScreen from './screens/DoctorRequestScreen';
 import PersonalBestScreen from './screens/PersonalBestScreen';
 import EmergencyContactsScreen from './screens/EmergencyContactsScreen';
+import MedicationScreen from './screens/MedicationScreen';
 
 const Stack = createStackNavigator();
 
@@ -56,10 +57,15 @@ function CustomHeader({ navigation, route }) {
           <Ionicons name="time" size={24} color="#fff" />
           <Text style={{ fontSize: 10, color: '#fff', marginTop: 2 }}>History</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('Medications')} style={{ padding: 8, alignItems: 'center' }}>
+          <Ionicons name="medkit" size={24} color="#fff" />
+          <Text style={{ fontSize: 10, color: '#fff', marginTop: 2 }}>Medications</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={{ padding: 8, alignItems: 'center' }}>
           <Ionicons name="person" size={24} color="#fff" />
           <Text style={{ fontSize: 10, color: '#fff', marginTop: 2 }}>Profile</Text>
         </TouchableOpacity>
+        
       </View>
     </View>
   );
@@ -131,6 +137,13 @@ export default function App() {
           component={HistoryScreen} 
           options={({ navigation }) => ({
             header: () => <CustomHeader navigation={navigation} route={{ name: 'History' }} />,
+          })}
+        />
+        <Stack.Screen 
+          name="Medications" 
+          component={MedicationScreen} 
+          options={({ navigation }) => ({
+            header: () => <CustomHeader navigation={navigation} route={{ name: 'Medications' }} />,
           })}
         />
         <Stack.Screen 

@@ -1,5 +1,6 @@
 // screens/DashboardScreen.jsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, TouchableOpacity, ScrollView, RefreshControl,
@@ -8,6 +9,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import Slider from '@react-native-community/slider';
 
 import api from '../services/api';
 import { getUser, getToken } from '../utils/storage';
@@ -44,33 +46,7 @@ function RiskCard({ riskScore, riskLevel }) {
   );
 }
 
-// ─── inline Slider component ──────────────────────────────────────────────────
-function Slider({ label, value, min, max, step = 1, onChange, unit = '' }) {
-  const steps = Math.round((max - min) / step);
-  const idx   = Math.round((value - min) / step);
-  return (
-    <View style={{ marginBottom: 14 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderVal}>{value}{unit}</Text>
-      </View>
-      <View style={styles.sliderTrack}>
-        {Array.from({ length: steps + 1 }).map((_, i) => (
-          <TouchableOpacity
-            key={i}
-            onPress={() => onChange(min + i * step)}
-            style={[styles.sliderDot, i === idx && styles.sliderDotActive]}
-          />
-        ))}
-        <View style={[styles.sliderFill, { width: `${(idx / steps) * 100}%` }]} />
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={styles.sliderMinMax}>{min}{unit}</Text>
-        <Text style={styles.sliderMinMax}>{max}{unit}</Text>
-      </View>
-    </View>
-  );
-}
+
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function DashboardScreen({ navigation }) {
@@ -84,7 +60,8 @@ export default function DashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [hasReadings, setHasReadings] = useState(false);
   const [location, setLocation] = useState(null);
-
+  
+  const [userMedications, setUserMedications] = useState([]);
   // Symptoms state — updated when returning from SymptomsLog
   const [symptoms, setSymptoms] = useState({
     coughing:          false,
@@ -113,7 +90,22 @@ export default function DashboardScreen({ navigation }) {
   
   // Personal best for PEF percentage calculation
   const [personalBestPef, setPersonalBestPef] = useState(450);
-
+  
+  // ✅ FETCH USER'S MEDICATIONS from API
+  const fetchUserMedications = async () => {
+  try {
+    const response = await api.get('/medications');
+    console.log('💊 Medications API response status:', response.status);
+    console.log('💊 Medications data received:', JSON.stringify(response.data, null, 2));
+    console.log('💊 Number of medications:', response.data.length);
+    setUserMedications(response.data);
+  } catch (error) {
+    console.error('Error fetching medications:', error);
+    console.error('Error details:', error.response?.data);
+  }
+};
+  // Add this log in Dashboard after fetching
+  console.log('💊 Medications data:', JSON.stringify(userMedications, null, 2));
   // Calculate symptom score (0-3 scale combining night + day)
   const calculateSymptomScore = () => {
     // Night symptoms (0-3 scale from slider 0-7 nights)
@@ -227,7 +219,11 @@ useEffect(() => {
 
 // Load medication state on component mount
 // Modify your loadMedicationState useEffect:
-
+  // ✅ FETCH medications on mount
+  // Add this after your other useEffects
+  useEffect(() => {
+    fetchUserMedications();
+  }, []);
   // ── Location Permission using Expo Location ──────────────────────────────────
   const requestLocationPermission = async () => {
     try {
@@ -335,19 +331,18 @@ useEffect(() => {
         console.log('📥 Received params in Dashboard:', params);
         
         // ✅ UPDATE MEDICATION STATE FIRST (always, even without updatedSymptoms)
-        if (params?.rescuePuffsToday !== undefined) {
-          console.log('🔄 Updating rescuePuffsToday from params:', params.rescuePuffsToday);
+        if (params?.rescuePuffsToday !== undefined && params?.rescuePuffsToday !== null) {
           setRescuePuffsToday(params.rescuePuffsToday);
         }
-        if (params?.controllerTaken !== undefined) {
-          console.log('🔄 Updating controllerTaken from params:', params.controllerTaken);
+        if (params?.controllerTaken !== undefined && params?.controllerTaken !== null) {
           setControllerTaken(params.controllerTaken);
         }
-        if (params?.rescueStock !== undefined) {
-          console.log('🔄 Updating rescueStock from params:', params.rescueStock);
+        if (params?.rescueStock !== undefined && params?.rescueStock !== null) {
           setRescueStock(params.rescueStock);
         }
-        
+        if (params?.hasCold !== undefined && params?.hasCold !== null) {
+          setHasCold(params.hasCold);
+        }
         if (params?.updatedSymptoms) {
           setSymptoms(params.updatedSymptoms);
           if (params.severity !== undefined) setSymptomSeverity(params.severity);
@@ -357,10 +352,10 @@ useEffect(() => {
           if (params.daySymptoms !== undefined) setSimDay(params.daySymptoms);
           if (params.heartRate !== undefined) setSimHr(params.heartRate);
           if (params.steps !== undefined) setSimSteps(params.steps);
-          if (params.hasCold !== undefined) setHasCold(params.hasCold);
           if (params.pefData?.value) setSimPef(params.pefData.value);
           if (params.reliefUse !== undefined) setSimReliefUse(params.reliefUse);
-          
+        }
+          // Clear params after processing
           navigation.setParams({ 
             updatedSymptoms: null, 
             severity: null,
@@ -371,8 +366,11 @@ useEffect(() => {
             hasCold: null,
             pefData: null,
             reliefUse: null,
+            rescuePuffsToday: null,
+            controllerTaken: null,
+            rescueStock: null,
           });
-        }
+        
       }
     }, [navigation])
   );
@@ -544,181 +542,270 @@ useEffect(() => {
         <Text style={styles.cardTitle}>📝 Today's Health Data</Text>
         <Text style={styles.cardSub}>Enter your symptoms and vitals</Text>
 
-        <Slider 
-          label="Night Symptoms" 
-          value={simNight} 
-          min={0} 
-          max={7} 
-          step={1} 
-          onChange={setSimNight} 
-          unit=" nights" 
+        {/* PEF Value  */}
+      <View style={{ marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={styles.sliderLabel}>Peak Flow (PEF)</Text>
+          <Text style={styles.sliderVal}>{simPef} L/min</Text>
+        </View>
+        <Slider
+          style={{ width: '100%', height: 40 }}
+          minimumValue={100}
+          maximumValue={700}
+          step={10}
+          value={simPef}
+          onValueChange={setSimPef}
+          minimumTrackTintColor="#547bfb"
+          maximumTrackTintColor="#e5e7eb"
         />
-        <Slider 
-          label="Day Symptoms" 
-          value={simDay} 
-          min={0} 
-          max={7} 
-          step={1} 
-          onChange={setSimDay} 
-          unit=" days" 
-        />
-        <Slider 
-          label="Heart Rate" 
-          value={simHr} 
-          min={50} 
-          max={150} 
-          step={1} 
-          onChange={setSimHr} 
-          unit=" BPM" 
-        />
-        <Slider 
-          label="Steps Today" 
-          value={simSteps} 
-          min={0} 
-          max={15000} 
-          step={500} 
-          onChange={setSimSteps} 
-          unit=" steps" 
-        />
+      </View>
 
-        <View style={styles.coldRow}>
-          <Text style={styles.sliderLabel}>🤧 Cold / Infection symptoms?</Text>
-          <Switch
-            value={hasCold}
-            onValueChange={setHasCold}
-            trackColor={{ true: '#ef4444', false: '#d1d5db' }}
-            thumbColor={hasCold ? '#fff' : '#f4f4f4'}
+        {/* Night Symptoms */}
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.sliderLabel}>Night Symptoms</Text>
+            <Text style={styles.sliderVal}>{simNight} nights</Text>
+          </View>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={0}
+            maximumValue={7}
+            step={1}
+            value={simNight}
+            onValueChange={setSimNight}
+            minimumTrackTintColor="#547bfb"
+            maximumTrackTintColor="#e5e7eb"
           />
         </View>
+
+        {/* Day Symptoms */}
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.sliderLabel}>Day Symptoms</Text>
+            <Text style={styles.sliderVal}>{simDay} days</Text>
+          </View>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={0}
+            maximumValue={7}
+            step={1}
+            value={simDay}
+            onValueChange={setSimDay}
+            minimumTrackTintColor="#547bfb"
+            maximumTrackTintColor="#e5e7eb"
+          />
+        </View>
+
+        {/* Heart Rate */}
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.sliderLabel}>Heart Rate</Text>
+            <Text style={styles.sliderVal}>{simHr} BPM</Text>
+          </View>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={50}
+            maximumValue={150}
+            step={1}
+            value={simHr}
+            onValueChange={setSimHr}
+            minimumTrackTintColor="#547bfb"
+            maximumTrackTintColor="#e5e7eb"
+          />
+        </View>
+
+        {/* Steps */}
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={styles.sliderLabel}>Steps Today</Text>
+            <Text style={styles.sliderVal}>{simSteps} steps</Text>
+          </View>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={0}
+            maximumValue={15000}
+            step={500}
+            value={simSteps}
+            onValueChange={setSimSteps}
+            minimumTrackTintColor="#547bfb"
+            maximumTrackTintColor="#e5e7eb"
+          />
+        </View>
+
       </View>
 
       {/* ── Environmental Widget ── */}
       <EnvironmentalWidget location={location} />
 
-      {/* ── Today's Symptoms (specific symptoms) ── */}
+      {/* ── Symptoms Card (Specific Symptoms + Cold Status) ── */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>📋 Specific Symptoms</Text>
+          <Text style={styles.cardTitle}>📋 Symptoms</Text>
           <TouchableOpacity
             style={styles.editBtn}
             onPress={() => navigation.navigate('SymptomsLog', {
               currentSymptoms: symptoms,
               currentSeverity: symptomSeverity,
+              currentHasCold: hasCold,
+              // Pass current health data
               currentNightSymptoms: simNight,
               currentDaySymptoms: simDay,
               currentHeartRate: simHr,
               currentSteps: simSteps,
-              currentHasCold: hasCold,
               currentPef: simPef,
               currentReliefUse: simReliefUse,
-              currentRescuePuffsToday: rescuePuffsToday,
+              // Pass medication state
+              currentRescuePuffs: rescuePuffsToday,
               currentControllerTaken: controllerTaken,
-              currentRescueStock: rescueStock
+              currentRescueStock: rescueStock,
             })}
           >
             <Text style={styles.editBtnText}>Edit</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Specific Symptoms */}
         {activeSymptoms.length === 0 ? (
-          <Text style={styles.noSymptomText}>No specific symptoms logged — tap Edit to log</Text>
+          <Text style={styles.noSymptomText}>No specific symptoms logged</Text>
         ) : (
-          <>
-            <View style={styles.symptomChips}>
-              {activeSymptoms.map(s => (
-                <View key={s} style={styles.symptomChip}>
-                  <Text style={styles.symptomChipText}>{s}</Text>
-                </View>
-              ))}
-            </View>
-            {symptomSeverity && (
-              <Text style={styles.severityText}>
-                Severity: {'⬤'.repeat(symptomSeverity)}{'○'.repeat(5 - symptomSeverity)}  {symptomSeverity}/5
-              </Text>
-            )}
-          </>
+          <View style={styles.symptomChips}>
+            {activeSymptoms.map(s => (
+              <View key={s} style={styles.symptomChip}>
+                <Text style={styles.symptomChipText}>{s}</Text>
+              </View>
+            ))}
+          </View>
         )}
-      </View>
-
-      {/* ── Medication ── */}
-      {/* ── Medication ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💊 Medication</Text>
-
-        {/* Rescue inhaler block */}
-        <View style={styles.medBlock}>
-          <View style={styles.medBlockHeader}>
-            <Text style={styles.medName}>🔵 Rescue Inhaler</Text>
-            <View style={[styles.stockBadge, { backgroundColor: (rescueStock ?? 75) < 20 ? '#fee2e2' : '#dcfce7' }]}>
-              <Text style={[styles.stockBadgeText, { color: (rescueStock ?? 75) < 20 ? '#dc2626' : '#16a34a' }]}>
-                {rescueStock ?? 75}% stock
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.medInfo}>
-            Used today: <Text style={styles.medHighlight}>{(rescuePuffsToday ?? 0)} puff{(rescuePuffsToday ?? 0) !== 1 ? 's' : ''}</Text>
-            {lastRescueTime ? `  •  Last at ${lastRescueTime}` : ''}
+        
+        {/* Cold Status */}
+        <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+          <Text style={styles.sliderLabel}>🤧 Cold / Infection:</Text>
+          <Text style={[styles.noSymptomText, { marginTop: 4 }]}>
+            {hasCold ? 'Has cold/flu symptoms' : 'No cold/flu symptoms'}
           </Text>
-
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, {
-              width: `${rescueStock ?? 75}%`,
-              backgroundColor: (rescueStock ?? 75) < 20 ? '#ef4444' : '#3b82f6',
-            }]} />
-          </View>
-
-          {(rescuePuffsToday ?? 0) >= 4 && (
-            <View style={styles.warningBanner}>
-              <Text style={styles.warningText}>⚠️ High rescue use today — consider contacting your doctor</Text>
-            </View>
-          )}
-
-          <View style={styles.medBtnRow}>
-            <TouchableOpacity style={styles.medPrimBtn} onPress={logRescuePuff}>
-              <Text style={styles.medPrimBtnText}>+ Log Puff</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.medSecBtn, (rescuePuffsToday ?? 0) === 0 && styles.medSecBtnDisabled]}
-              onPress={undoLastPuff}
-              disabled={(rescuePuffsToday ?? 0) === 0}
-            >
-              <Text style={[styles.medSecBtnText, (rescuePuffsToday ?? 0) === 0 && { color: '#9ca3af' }]}>
-                Undo
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-          
-        {/* Daily controller block */}
-        <View style={[styles.medBlock, { marginBottom: 0 }]}>
-          <View style={styles.medBlockHeader}>
-            <Text style={styles.medName}>🟢 Daily Controller</Text>
-            <View style={[styles.stockBadge, { backgroundColor: (controllerTaken ?? false) ? '#dcfce7' : '#fef9c3' }]}>
-              <Text style={[styles.stockBadgeText, { color: (controllerTaken ?? false) ? '#16a34a' : '#ca8a04' }]}>
-                {(controllerTaken ?? false) ? '✓ Taken' : 'Pending'}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.medInfo}>Next scheduled dose: 8:00 AM</Text>
-
-          {(controllerTaken ?? false) ? (
-            <View style={styles.takenRow}>
-              <Text style={styles.takenText}>✅ Taken today</Text>
-              <TouchableOpacity onPress={() => setControllerTaken(false)}>
-                <Text style={styles.undoText}>Undo</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.medPrimBtn}
-              onPress={() => setControllerTaken(true)}
-            >
-              <Text style={styles.medPrimBtnText}>Mark as Taken</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
+      {/* ── Medication Section - DYNAMIC from database ── */}
+<View style={styles.card}>
+  <Text style={styles.cardTitle}>💊 My Medications</Text>
+  
+  {/* Rescue Medications (type: 'rescue') */}
+  {userMedications.filter(m => m.type === 'rescue').map((med) => (
+    <View key={med._id} style={styles.medBlock}>
+      <View style={styles.medBlockHeader}>
+        <Text style={styles.medName}>🔵 {med.name}</Text>
+        <View style={[styles.stockBadge, { backgroundColor: (rescueStock ?? 75) < 20 ? '#fee2e2' : '#dcfce7' }]}>
+          <Text style={[styles.stockBadgeText, { color: (rescueStock ?? 75) < 20 ? '#dc2626' : '#16a34a' }]}>
+            {rescueStock ?? 75}% stock
+          </Text>
+        </View>
+      </View>
+      
+      <Text style={styles.medInfo}>
+        Used today: <Text style={styles.medHighlight}>{(rescuePuffsToday ?? 0)} puff{(rescuePuffsToday ?? 0) !== 1 ? 's' : ''}</Text>
+        {lastRescueTime ? `  •  Last at ${lastRescueTime}` : ''}
+      </Text>
+
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, {
+          width: `${rescueStock ?? 75}%`,
+          backgroundColor: (rescueStock ?? 75) < 20 ? '#ef4444' : '#3b82f6',
+        }]} />
+      </View>
+
+      {/* Reminder messages */}
+      {(rescuePuffsToday ?? 0) === 0 && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoText}>✅ No puffs used today. Your asthma is well controlled!</Text>
+        </View>
+      )}
+      
+      {(rescuePuffsToday ?? 0) > 0 && (rescuePuffsToday ?? 0) < 4 && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoText}>⚠️ You've used {(rescuePuffsToday ?? 0)} puff(s) today. Monitor your symptoms.</Text>
+        </View>
+      )}
+
+      {(rescuePuffsToday ?? 0) >= 4 && (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningText}>⚠️ High rescue use today ({rescuePuffsToday} puffs) — consider contacting your doctor</Text>
+        </View>
+      )}
+
+      <View style={styles.medBtnRow}>
+        <TouchableOpacity style={styles.medPrimBtn} onPress={logRescuePuff}>
+          <Text style={styles.medPrimBtnText}>+ Log Puff</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.medSecBtn, (rescuePuffsToday ?? 0) === 0 && styles.medSecBtnDisabled]}
+          onPress={undoLastPuff}
+          disabled={(rescuePuffsToday ?? 0) === 0}
+        >
+          <Text style={[styles.medSecBtnText, (rescuePuffsToday ?? 0) === 0 && { color: '#9ca3af' }]}>
+            Undo
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  ))}
+
+  {/* Controller Medications (type: 'controller') */}
+  {userMedications.filter(m => m.type === 'controller').map((med) => (
+    <View key={med._id} style={[styles.medBlock, { marginBottom: 0 }]}>
+      <View style={styles.medBlockHeader}>
+        <Text style={styles.medName}>🟢 {med.name}</Text>
+        <View style={[styles.stockBadge, { backgroundColor: (controllerTaken ?? false) ? '#dcfce7' : '#fef9c3' }]}>
+          <Text style={[styles.stockBadgeText, { color: (controllerTaken ?? false) ? '#16a34a' : '#ca8a04' }]}>
+            {(controllerTaken ?? false) ? '✓ Taken' : 'Pending'}
+          </Text>
+        </View>
+      </View>
+      
+      {med.dosage && <Text style={styles.medInfo}>💊 Dosage: {med.dosage}</Text>}
+      {med.frequency && <Text style={styles.medInfo}>⏰ Frequency: {med.frequency}</Text>}
+      
+      <Text style={styles.medInfo}>Next scheduled dose: 8:00 AM</Text>
+
+      {(controllerTaken ?? false) ? (
+        <View style={styles.takenRow}>
+          <Text style={styles.takenText}>✅ Taken today</Text>
+          <TouchableOpacity onPress={() => setControllerTaken(false)}>
+            <Text style={styles.undoText}>Undo</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.medPrimBtn}
+          onPress={() => setControllerTaken(true)}
+        >
+          <Text style={styles.medPrimBtnText}>Mark as Taken</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  ))}
+
+      {/* Other Medications (type: 'biologic', 'other') */}
+      {userMedications.filter(m => m.type !== 'rescue' && m.type !== 'controller').map((med) => (
+        <View key={med._id} style={[styles.medBlock, { marginBottom: 0, backgroundColor: '#f3f4f6' }]}>
+          <View style={styles.medBlockHeader}>
+            <Text style={styles.medName}>
+              {med.type === 'biologic' ? '🧬' : '💊'} {med.name}
+            </Text>
+          </View>
+          {med.dosage && <Text style={styles.medInfo}>💊 Dosage: {med.dosage}</Text>}
+          {med.frequency && <Text style={styles.medInfo}>⏰ Frequency: {med.frequency}</Text>}
+          {med.notes && <Text style={styles.medInfo}>📝 {med.notes}</Text>}
+        </View>
+      ))}
+
+      {userMedications.length === 0 && (
+        <View style={styles.emptyMedications}>
+          <Text style={styles.noSymptomText}>No medications added yet</Text>
+          <Text style={styles.medInfo}>Tap "Medications" in the bottom nav to add your medications</Text>
+        </View>
+      )}
+    </View>
+
 
       {/* ── Submit Reading ── */}
       <TouchableOpacity
@@ -731,7 +818,6 @@ useEffect(() => {
           ? <ActivityIndicator color="#fff" size="large" />
           : <>
               <Text style={styles.submitBtnText}>🔍 Analyse & Submit Reading</Text>
-              <Text style={styles.submitBtnSub}>Uses AI to calculate your risk level</Text>
             </>
         }
       </TouchableOpacity>
@@ -748,6 +834,8 @@ const styles = StyleSheet.create({
   riskLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
   riskValue: { fontSize: 42, fontWeight: '900', color: '#fff' },
   riskSub: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+
+  emptyMedications: { padding: 20,  alignItems: 'center', },
 
   checkRequestBtn: { 
     backgroundColor: '#8b5cf6', 
@@ -811,7 +899,9 @@ const styles = StyleSheet.create({
   sliderDotActive: { backgroundColor: '#547bfb', width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: '#fff', shadowColor: '#547bfb', shadowOpacity: 0.4, shadowRadius: 4, elevation: 4, marginHorizontal: -5 },
   sliderMinMax: { fontSize: 10, color: '#9ca3af' },
   coldRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-
+   
+  infoBanner: { backgroundColor: '#dbeafe',borderRadius: 10,padding: 10,marginBottom: 10 },
+  infoText: { color: '#1e40af',  fontSize: 12,  fontWeight: '500' },
   editBtn: { backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10 },
   editBtnText: { color: '#547bfb', fontSize: 13, fontWeight: '600' },
 

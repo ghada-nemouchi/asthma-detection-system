@@ -143,9 +143,8 @@ const PatientDetail = () => {
   // Fetch medications (you'll need to add this endpoint)
   const fetchMedications = async () => {
     try {
-      
       //  Get from patient object if stored
-      const response = await api.get(`/patients/${patientId}/medications`).catch(() => ({ data: [] }));
+      const response = await api.get(`/patients/${patientId}/medications`);
       setMedications(response.data);
     } catch (err) {
       console.log('No medications endpoint yet, using mock data');
@@ -159,6 +158,7 @@ const PatientDetail = () => {
     const loadData = async () => {
       await fetchPatientData();
       await fetchReadings();
+      await fetchMedications();
     };
     loadData();
   }, [patientId]);
@@ -566,18 +566,30 @@ const PatientDetail = () => {
             ) : (
               <div className="space-y-3">
                 {medications.map((med, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-800">{med.name}</p>
-                        <p className="text-sm text-gray-500">{med.dosage} - {med.frequency}</p>
-                      </div>
-                      <span className="text-xs text-gray-400">
-                        Prescribed: {new Date(med.prescribedDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+  <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="font-semibold text-gray-800">{med.name}</p>
+        <p className="text-sm text-gray-500">
+          {med.dosage} - {med.frequency}
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          Type: <span className="capitalize">{med.type}</span>
+        </p>
+      </div>                  
+          {/* Fix for missing prescribedDate */}
+          {med.prescribedDate ? (
+            <span className="text-xs text-gray-400">
+              Prescribed: {new Date(med.prescribedDate).toLocaleDateString()}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400">
+              Added via mobile app
+            </span>
+          )}
+            </div>
+          </div>
+        ))}
               </div>
             )}
 

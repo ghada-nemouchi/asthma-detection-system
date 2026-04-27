@@ -4,6 +4,7 @@ const router = express.Router();
 const User = require('../models/User');
 const Reading = require('../models/Reading');
 const Alert = require('../models/Alert'); 
+const Medication = require('../models/Medication');
 const { protect, doctorOnly } = require('../middleware/auth');
 
 
@@ -485,7 +486,18 @@ router.get('/:id', protect, doctorOnly, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
+// GET /api/patients/:id/medications - Doctor views patient's medications
+router.get('/:id/medications', protect, doctorOnly, async (req, res) => {
+  try {
+    const medications = await Medication.find({ 
+      patientId: req.params.id,
+      isActive: true 
+    });
+    res.json(medications);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 router.post('/', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.create({
