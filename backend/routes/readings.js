@@ -108,6 +108,9 @@ router.post('/', protect, async (req, res) => {
         
         const baselineHr = patient.baselineHr || 70;
         const baselineSteps = patient.baselineSteps || 5000;
+                // Calculate them first as variables
+        const hr_pct_bl = mean_hr ? (mean_hr / baselineHr) * 100 : 100;
+        const steps_pct_bl = steps ? (steps / baselineSteps) * 100 : 100;
         const now = new Date();
 
         // Build the 12 features that the ML model expects
@@ -119,8 +122,8 @@ router.post('/', protect, async (req, res) => {
             rescue_roll3_sum:  await calculateRollingSum(patientId, 3, 'relief_use', now),
             rescue_roll3_days: await calculateRollingDays(patientId, 3, now),
             symptom_score:     calculateSymptomScore(night_symptoms, day_symptoms, relief_use),
-            hr_pct_bl:         mean_hr ? (mean_hr / baselineHr) * 100 : 100,
-            steps_pct_bl:      steps  ? (steps  / baselineSteps) * 100 : 100,
+            hr_pct_bl:         hr_pct_bl,
+            steps_pct_bl:      steps_pct_bl, 
             pef_drop_rescue:   await calculatePefDropAfterRescue(patientId, now, pef_norm, relief_use),
             pollen_enc:        Math.min(Math.max(Math.ceil((aqi || 50) / 50), 1), 4),
             cold_flag:         hasCold ? 1 : 0
@@ -138,6 +141,8 @@ router.post('/', protect, async (req, res) => {
         }
 
         // ✅ DEBUG LOGS
+        console.log('📊 HR:', mean_hr, 'Baseline HR:', baselineHr, 'hr_pct_bl:', hr_pct_bl);
+        console.log('📊 Steps:', steps, 'Baseline Steps:', baselineSteps, 'steps_pct_bl:', steps_pct_bl);
         console.log('📊 ML Risk:', mlRisk, 'ML Level:', mlLevel);
         console.log('📊 PEF value:', pef, 'Personal Best:', personalBest, 'PEF norm:', pef_norm);
         console.log('📊 Relief use:', relief_use);

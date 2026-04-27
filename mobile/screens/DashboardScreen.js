@@ -13,6 +13,8 @@ import api from '../services/api';
 import { getUser, getToken } from '../utils/storage';
 import EnvironmentalWidget from '../components/EnvironmentalWidget';
 import { initializeSocket, disconnectSocket, getSocket } from '../services/socket';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // ─── inline RiskCard ───────────────────────────────────────────────────────
 function RiskCard({ riskScore, riskLevel }) {
   if (!riskLevel || riskLevel === 'none') {
@@ -42,7 +44,7 @@ function RiskCard({ riskScore, riskLevel }) {
   );
 }
 
-// ─── inline SensorSimulator ──────────────────────────────────────────────────
+// ─── inline Slider component ──────────────────────────────────────────────────
 function Slider({ label, value, min, max, step = 1, onChange, unit = '' }) {
   const steps = Math.round((max - min) / step);
   const idx   = Math.round((value - min) / step);
@@ -98,18 +100,64 @@ export default function DashboardScreen({ navigation }) {
   const [rescueStock, setRescueStock]           = useState(75);
   const [lastRescueTime, setLastRescueTime]     = useState(null);
 
-  // Sensor simulator
-  const [simPef,          setSimPef]          = useState(420);
-  const [simReliefUse,    setSimReliefUse]    = useState(0);
-  const [simNight,        setSimNight]        = useState(0);
-  const [simDay,          setSimDay]          = useState(0);
-  const [simHr,           setSimHr]           = useState(72);
-  const [simSteps,        setSimSteps]        = useState(5000);
-  const [hasCold,         setHasCold]         = useState(false);
+  // Manual entry fields (only these will be shown)
+  const [simNight, setSimNight] = useState(0);
+  const [simDay, setSimDay] = useState(0);
+  const [simHr, setSimHr] = useState(72);
+  const [simSteps, setSimSteps] = useState(5000);
+  const [hasCold, setHasCold] = useState(false);
+  
+  // PEF and Relief use (still needed for model)
+  const [simPef, setSimPef] = useState(420);
+  const [simReliefUse, setSimReliefUse] = useState(0);
+  
+  // Personal best for PEF percentage calculation
+  const [personalBestPef, setPersonalBestPef] = useState(450);
+
+  // Calculate symptom score (0-3 scale combining night + day)
+  const calculateSymptomScore = () => {
+    // Night symptoms (0-3 scale from slider 0-7 nights)
+    let nightScore = 0;
+    if (simNight >= 5) nightScore = 3;
+    else if (simNight >= 3) nightScore = 2;
+    else if (simNight >= 1) nightScore = 1;
+    else nightScore = 0;
+    
+    // Day symptoms (0-3 scale from slider 0-7 days)
+    let dayScore = 0;
+    if (simDay >= 5) dayScore = 3;
+    else if (simDay >= 3) dayScore = 2;
+    else if (simDay >= 1) dayScore = 1;
+    else dayScore = 0;
+    
+    // Combined score (0-3 scale, max 3)
+    return Math.min(3, nightScore + dayScore);
+  };
+
+  // Calculate PEF percentage of personal best
+  const calculatePefPercentage = () => {
+    if (!personalBestPef || personalBestPef === 0) return 100;
+    return Math.round((simPef / personalBestPef) * 100);
+  };
+
+  // Calculate heart rate percentage of baseline (assuming baseline 72 BPM)
+  const calculateHrPercentage = () => {
+    const baselineHr = 72;
+    return Math.round((simHr / baselineHr) * 100);
+  };
+
+  // Calculate steps percentage of baseline (assuming baseline 5000 steps)
+  const calculateStepsPercentage = () => {
+    const baselineSteps = 5000;
+    return Math.round((simSteps / baselineSteps) * 100);
+  };
 
 // ── Socket Connection ──
-// ── Socket Connection ──
 useEffect(() => {
+  console.log('🔄 Dashboard mounted/updated');
+  console.log('💊 Rescue Puffs Today:', rescuePuffsToday);
+  console.log('💊 Controller Taken:', controllerTaken);
+  console.log('💊 Rescue Stock:', rescueStock);
   const initSocket = async () => {
     try {
       const token = await getToken();
@@ -122,7 +170,6 @@ useEffect(() => {
         console.log('User role:', userData.role);
 
         if (userData.role === 'patient') {
-          // ✅ NE PAS passer token - initializeSocket utilise getToken() elle-même
           const newSocket = await initializeSocket();
           
           if (newSocket) {
@@ -158,6 +205,29 @@ useEffect(() => {
     console.log('🔌 Socket disconnected on unmount');
   };
 }, []);
+
+
+// Save medication state whenever it changes
+useEffect(() => {
+  const saveMedicationState = async () => {
+    try {
+      await AsyncStorage.setItem('rescuePuffsToday', rescuePuffsToday.toString());
+      await AsyncStorage.setItem('controllerTaken', controllerTaken.toString());
+      await AsyncStorage.setItem('rescueStock', rescueStock.toString());
+      if (lastRescueTime) {
+        await AsyncStorage.setItem('lastRescueTime', lastRescueTime);
+      }
+      console.log('💾 Saved medication state:', { rescuePuffsToday, controllerTaken, rescueStock });
+    } catch (e) {
+      console.error('Failed to save medication state', e);
+    }
+  };
+  saveMedicationState();
+}, [rescuePuffsToday, controllerTaken, rescueStock, lastRescueTime]);
+
+// Load medication state on component mount
+// Modify your loadMedicationState useEffect:
+
   // ── Location Permission using Expo Location ──────────────────────────────────
   const requestLocationPermission = async () => {
     try {
@@ -189,6 +259,11 @@ useEffect(() => {
     try {
       const userData = await getUser();
       setUser(userData);
+      
+      // Load personal best PEF from user profile
+      if (userData?.personalBestPef) {
+        setPersonalBestPef(userData.personalBestPef);
+      }
 
       // Fetch readings
       const response = await api.get('/patients/me');
@@ -201,14 +276,15 @@ useEffect(() => {
           riskLevel: latest.riskLevel || 'low',
         });
         if (latest.pef_norm) {
+          const pefValue = Math.round(latest.pef_norm * (userData?.personalBestPef || 450));
           setPefData({
-            value: Math.round(latest.pef_norm * (userData?.personalBestPef || 450)),
+            value: pefValue,
             change: null,
           });
-          setSimPef(Math.round(latest.pef_norm * (userData?.personalBestPef || 450)));
+          setSimPef(pefValue);
         }
-        if (latest.mean_hr)  setHeartRate(latest.mean_hr);
-        if (latest.aqi)      setAqi(latest.aqi);
+        if (latest.mean_hr) setHeartRate(latest.mean_hr);
+        if (latest.aqi) setAqi(latest.aqi);
       } else {
         setHasReadings(false);
         setRiskData({ riskScore: 0, riskLevel: 'none' });
@@ -243,48 +319,93 @@ useEffect(() => {
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
       fetchEnvironmentalData();
     }, [])
   );
 
   // Receive params from SymptomsLog navigation
-  useFocusEffect(
+  // Receive params from SymptomsLog navigation
+    useFocusEffect(
     useCallback(() => {
       if (navigation?.getState) {
-        const state  = navigation.getState();
-        const route  = state?.routes?.[state.index];
+        const state = navigation.getState();
+        const route = state?.routes?.[state.index];
         const params = route?.params;
+
+        console.log('📥 Received params in Dashboard:', params);
+        
+        // ✅ UPDATE MEDICATION STATE FIRST (always, even without updatedSymptoms)
+        if (params?.rescuePuffsToday !== undefined) {
+          console.log('🔄 Updating rescuePuffsToday from params:', params.rescuePuffsToday);
+          setRescuePuffsToday(params.rescuePuffsToday);
+        }
+        if (params?.controllerTaken !== undefined) {
+          console.log('🔄 Updating controllerTaken from params:', params.controllerTaken);
+          setControllerTaken(params.controllerTaken);
+        }
+        if (params?.rescueStock !== undefined) {
+          console.log('🔄 Updating rescueStock from params:', params.rescueStock);
+          setRescueStock(params.rescueStock);
+        }
+        
         if (params?.updatedSymptoms) {
           setSymptoms(params.updatedSymptoms);
           if (params.severity !== undefined) setSymptomSeverity(params.severity);
-          navigation.setParams({ updatedSymptoms: null, severity: null });
+          
+          // Update health data
+          if (params.nightSymptoms !== undefined) setSimNight(params.nightSymptoms);
+          if (params.daySymptoms !== undefined) setSimDay(params.daySymptoms);
+          if (params.heartRate !== undefined) setSimHr(params.heartRate);
+          if (params.steps !== undefined) setSimSteps(params.steps);
+          if (params.hasCold !== undefined) setHasCold(params.hasCold);
+          if (params.pefData?.value) setSimPef(params.pefData.value);
+          if (params.reliefUse !== undefined) setSimReliefUse(params.reliefUse);
+          
+          navigation.setParams({ 
+            updatedSymptoms: null, 
+            severity: null,
+            nightSymptoms: null,
+            daySymptoms: null,
+            heartRate: null,
+            steps: null,
+            hasCold: null,
+            pefData: null,
+            reliefUse: null,
+          });
         }
       }
     }, [navigation])
   );
-
   // ── submit reading ────────────────────────────────────────────────────────
   const submitReading = async () => {
     setLoading(true);
     try {
+      const pefPercentage = calculatePefPercentage();
+      const symptomScore = calculateSymptomScore();
+      const hrPercentage = calculateHrPercentage();
+      const stepsPercentage = calculateStepsPercentage();
       
-      const response = await api.post(
-        '/readings',
-        {
-          night_symptoms: simNight,
-          day_symptoms:   simDay,
-          pef:            simPef,
-          relief_use:     simReliefUse,
-          steps:          simSteps,
-          mean_hr:        simHr,
-          temperature:    22,
-          aqi:            aqi || 50,
-          hasCold,
-          location: location || null
-        },
-        
-      );
+      const readingData = {
+        night_symptoms: simNight,
+        day_symptoms: simDay,
+        pef: simPef,
+        pef_pct_pb: pefPercentage,
+        relief_use: simReliefUse,
+        rescue_used: simReliefUse > 0 ? 1 : 0,
+        symptom_score: symptomScore,
+        steps: simSteps,
+        steps_pct_bl: stepsPercentage,
+        mean_hr: simHr,
+        hr_pct_bl: hrPercentage,
+        temperature: 22,
+        aqi: aqi || 50,
+        hasCold: hasCold,
+        location: location || null
+      };
+      
+      console.log('📊 Submitting reading with features:', readingData);
+      
+      const response = await api.post('/readings', readingData);
 
       const { riskScore, riskLevel } = response.data;
       setRiskData({ riskScore, riskLevel });
@@ -294,9 +415,9 @@ useEffect(() => {
 
       const msg = {
         critical: ['🚨 URGENT', 'Critical risk! Take rescue inhaler immediately.'],
-        high:     ['⚠️ Warning', 'High risk detected. Monitor symptoms closely.'],
-        medium:   ['🔶 Caution', 'Medium risk. Stay alert and rest if needed.'],
-        low:      ['✅ All Good', 'Reading submitted. Risk is low.'],
+        high: ['⚠️ Warning', 'High risk detected. Monitor symptoms closely.'],
+        medium: ['🔶 Caution', 'Medium risk. Stay alert and rest if needed.'],
+        low: ['✅ All Good', 'Reading submitted. Risk is low.'],
       }[riskLevel] || ['✅ Submitted', 'Reading saved.'];
       Alert.alert(msg[0], msg[1]);
     } catch (error) {
@@ -329,7 +450,7 @@ useEffect(() => {
 
   const aqiLabel = (v) => {
     if (!v) return '—';
-    if (v <= 50)  return 'Good';
+    if (v <= 50) return 'Good';
     if (v <= 100) return 'Moderate';
     if (v <= 150) return 'Unhealthy';
     return 'Very Unhealthy';
@@ -337,7 +458,7 @@ useEffect(() => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadData(), fetchEnvironmentalData()]);
+    await fetchEnvironmentalData(); 
     setRefreshing(false);
   };
 
@@ -407,20 +528,61 @@ useEffect(() => {
         </View>
       </View>
 
-      {/* ── Sensor Simulator ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>📱 Sensor Simulator</Text>
-        <Text style={styles.cardSub}>Simulates smartwatch / spirometer input</Text>
+      {/* ── Symptom Score Display ── */}
+      <View style={styles.symptomScoreCard}>
+        <Text style={styles.symptomScoreLabel}>📊 Combined Symptom Score</Text>
+        <Text style={styles.symptomScoreValue}>
+          {calculateSymptomScore()} / 3
+        </Text>
+        <Text style={styles.symptomScoreSub}>
+          From night + day symptoms (0=none → 3=severe)
+        </Text>
+      </View>
 
-        <Slider label="PEF Value"            value={simPef}       min={100} max={700} step={10}  onChange={setSimPef}       unit=" L/min" />
-        <Slider label="Reliever Use / week"  value={simReliefUse} min={0}   max={7}   step={1}   onChange={setSimReliefUse} unit="×" />
-        <Slider label="Night Symptoms / week" value={simNight}    min={0}   max={7}   step={1}   onChange={setSimNight}     unit=" nights" />
-        <Slider label="Day Symptoms / week"  value={simDay}       min={0}   max={7}   step={1}   onChange={setSimDay}       unit=" days" />
-        <Slider label="Heart Rate"           value={simHr}        min={50}  max={150} step={1}   onChange={setSimHr}        unit=" BPM" />
-        <Slider label="Steps Today"          value={simSteps}     min={0}   max={15000} step={500} onChange={setSimSteps}   unit="" />
+      {/* ── Manual Entry Fields ── */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>📝 Today's Health Data</Text>
+        <Text style={styles.cardSub}>Enter your symptoms and vitals</Text>
+
+        <Slider 
+          label="Night Symptoms" 
+          value={simNight} 
+          min={0} 
+          max={7} 
+          step={1} 
+          onChange={setSimNight} 
+          unit=" nights" 
+        />
+        <Slider 
+          label="Day Symptoms" 
+          value={simDay} 
+          min={0} 
+          max={7} 
+          step={1} 
+          onChange={setSimDay} 
+          unit=" days" 
+        />
+        <Slider 
+          label="Heart Rate" 
+          value={simHr} 
+          min={50} 
+          max={150} 
+          step={1} 
+          onChange={setSimHr} 
+          unit=" BPM" 
+        />
+        <Slider 
+          label="Steps Today" 
+          value={simSteps} 
+          min={0} 
+          max={15000} 
+          step={500} 
+          onChange={setSimSteps} 
+          unit=" steps" 
+        />
 
         <View style={styles.coldRow}>
-          <Text style={styles.sliderLabel}>Cold / Infection symptoms?</Text>
+          <Text style={styles.sliderLabel}>🤧 Cold / Infection symptoms?</Text>
           <Switch
             value={hasCold}
             onValueChange={setHasCold}
@@ -433,15 +595,25 @@ useEffect(() => {
       {/* ── Environmental Widget ── */}
       <EnvironmentalWidget location={location} />
 
-      {/* ── Today's Symptoms ── */}
+      {/* ── Today's Symptoms (specific symptoms) ── */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>📋 Today's Symptoms</Text>
+          <Text style={styles.cardTitle}>📋 Specific Symptoms</Text>
           <TouchableOpacity
             style={styles.editBtn}
             onPress={() => navigation.navigate('SymptomsLog', {
               currentSymptoms: symptoms,
               currentSeverity: symptomSeverity,
+              currentNightSymptoms: simNight,
+              currentDaySymptoms: simDay,
+              currentHeartRate: simHr,
+              currentSteps: simSteps,
+              currentHasCold: hasCold,
+              currentPef: simPef,
+              currentReliefUse: simReliefUse,
+              currentRescuePuffsToday: rescuePuffsToday,
+              currentControllerTaken: controllerTaken,
+              currentRescueStock: rescueStock
             })}
           >
             <Text style={styles.editBtnText}>Edit</Text>
@@ -449,7 +621,7 @@ useEffect(() => {
         </View>
 
         {activeSymptoms.length === 0 ? (
-          <Text style={styles.noSymptomText}>No symptoms logged — tap Edit to log</Text>
+          <Text style={styles.noSymptomText}>No specific symptoms logged — tap Edit to log</Text>
         ) : (
           <>
             <View style={styles.symptomChips}>
@@ -469,6 +641,7 @@ useEffect(() => {
       </View>
 
       {/* ── Medication ── */}
+      {/* ── Medication ── */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>💊 Medication</Text>
 
@@ -476,26 +649,26 @@ useEffect(() => {
         <View style={styles.medBlock}>
           <View style={styles.medBlockHeader}>
             <Text style={styles.medName}>🔵 Rescue Inhaler</Text>
-            <View style={[styles.stockBadge, { backgroundColor: rescueStock < 20 ? '#fee2e2' : '#dcfce7' }]}>
-              <Text style={[styles.stockBadgeText, { color: rescueStock < 20 ? '#dc2626' : '#16a34a' }]}>
-                {rescueStock}% stock
+            <View style={[styles.stockBadge, { backgroundColor: (rescueStock ?? 75) < 20 ? '#fee2e2' : '#dcfce7' }]}>
+              <Text style={[styles.stockBadgeText, { color: (rescueStock ?? 75) < 20 ? '#dc2626' : '#16a34a' }]}>
+                {rescueStock ?? 75}% stock
               </Text>
             </View>
           </View>
 
           <Text style={styles.medInfo}>
-            Used today: <Text style={styles.medHighlight}>{rescuePuffsToday} puff{rescuePuffsToday !== 1 ? 's' : ''}</Text>
+            Used today: <Text style={styles.medHighlight}>{(rescuePuffsToday ?? 0)} puff{(rescuePuffsToday ?? 0) !== 1 ? 's' : ''}</Text>
             {lastRescueTime ? `  •  Last at ${lastRescueTime}` : ''}
           </Text>
 
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, {
-              width: `${rescueStock}%`,
-              backgroundColor: rescueStock < 20 ? '#ef4444' : '#3b82f6',
+              width: `${rescueStock ?? 75}%`,
+              backgroundColor: (rescueStock ?? 75) < 20 ? '#ef4444' : '#3b82f6',
             }]} />
           </View>
 
-          {rescuePuffsToday >= 4 && (
+          {(rescuePuffsToday ?? 0) >= 4 && (
             <View style={styles.warningBanner}>
               <Text style={styles.warningText}>⚠️ High rescue use today — consider contacting your doctor</Text>
             </View>
@@ -506,11 +679,11 @@ useEffect(() => {
               <Text style={styles.medPrimBtnText}>+ Log Puff</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.medSecBtn, rescuePuffsToday === 0 && styles.medSecBtnDisabled]}
+              style={[styles.medSecBtn, (rescuePuffsToday ?? 0) === 0 && styles.medSecBtnDisabled]}
               onPress={undoLastPuff}
-              disabled={rescuePuffsToday === 0}
+              disabled={(rescuePuffsToday ?? 0) === 0}
             >
-              <Text style={[styles.medSecBtnText, rescuePuffsToday === 0 && { color: '#9ca3af' }]}>
+              <Text style={[styles.medSecBtnText, (rescuePuffsToday ?? 0) === 0 && { color: '#9ca3af' }]}>
                 Undo
               </Text>
             </TouchableOpacity>
@@ -521,15 +694,15 @@ useEffect(() => {
         <View style={[styles.medBlock, { marginBottom: 0 }]}>
           <View style={styles.medBlockHeader}>
             <Text style={styles.medName}>🟢 Daily Controller</Text>
-            <View style={[styles.stockBadge, { backgroundColor: controllerTaken ? '#dcfce7' : '#fef9c3' }]}>
-              <Text style={[styles.stockBadgeText, { color: controllerTaken ? '#16a34a' : '#ca8a04' }]}>
-                {controllerTaken ? '✓ Taken' : 'Pending'}
+            <View style={[styles.stockBadge, { backgroundColor: (controllerTaken ?? false) ? '#dcfce7' : '#fef9c3' }]}>
+              <Text style={[styles.stockBadgeText, { color: (controllerTaken ?? false) ? '#16a34a' : '#ca8a04' }]}>
+                {(controllerTaken ?? false) ? '✓ Taken' : 'Pending'}
               </Text>
             </View>
           </View>
           <Text style={styles.medInfo}>Next scheduled dose: 8:00 AM</Text>
 
-          {controllerTaken ? (
+          {(controllerTaken ?? false) ? (
             <View style={styles.takenRow}>
               <Text style={styles.takenText}>✅ Taken today</Text>
               <TouchableOpacity onPress={() => setControllerTaken(false)}>
@@ -600,6 +773,30 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 2 },
   statValue: { fontSize: 16, fontWeight: '700', color: '#111827' },
   statUnit: { fontSize: 10, color: '#9ca3af' },
+
+  symptomScoreCard: {
+    backgroundColor: '#547bfb',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: 'center',
+    elevation: 2,
+  },
+  symptomScoreLabel: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: 8,
+  },
+  symptomScoreValue: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  symptomScoreSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 4,
+  },
 
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, elevation: 2 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },

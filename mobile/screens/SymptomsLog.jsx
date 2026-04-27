@@ -12,15 +12,28 @@ const SymptomsLog = ({ navigation, route }) => {
   };
   const existingSeverity = route.params?.currentSeverity || 3;
 
+    // ✅ ADD THESE - receive current Dashboard values
+  const existingNightSymptoms = route.params?.currentNightSymptoms || 0;
+  const existingDaySymptoms = route.params?.currentDaySymptoms || 0;
+  const existingHeartRate = route.params?.currentHeartRate || 72;
+  const existingSteps = route.params?.currentSteps || 5000;
+  const existingHasCold = route.params?.currentHasCold || false;
+  const existingPef = route.params?.currentPef || 420;
+  const existingReliefUse = route.params?.currentReliefUse || 0;
+  // Add with other existing params
+  const existingRescuePuffsToday = route.params?.currentRescuePuffsToday || 0;
+  const existingControllerTaken = route.params?.currentControllerTaken || false;
+  const existingRescueStock = route.params?.currentRescueStock || 75;
+    
+
   const [symptoms, setSymptoms] = useState(existingSymptoms);
   const [severity, setSeverity] = useState(existingSeverity);
   const [notes, setNotes] = useState('');
   
-  const [pefPercentage, setPefPercentage] = useState(100);
+  // PEF in L/min (100-700)
+  const [pefValue, setPefValue] = useState(420);
   const [personalBest, setPersonalBest] = useState(450);
   const [reliefUse, setReliefUse] = useState(0);
-  const [nightSymptoms, setNightSymptoms] = useState(0); // Add night symptoms
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -36,13 +49,19 @@ const SymptomsLog = ({ navigation, route }) => {
     }
   };
 
+  // Calculate percentage for display only
+  const getPefPercentage = () => {
+    return Math.round((pefValue / personalBest) * 100);
+  };
+
   const handleSave = async () => {
-    const hasSymptoms = Object.values(symptoms).some(value => value === true);
+    // ✅ FIX: Don't require symptoms - just check if PEF or Relief were entered
+    const hasData = pefValue > 0 || reliefUse > 0 || Object.values(symptoms).some(v => v === true);
     
-    if (!hasSymptoms) {
+    if (!hasData) {
       Alert.alert(
-        'No Symptoms Selected',
-        'Please select at least one symptom or tap "Skip" to continue.',
+        'No Data Entered',
+        'Please enter PEF value, reliever use, or select symptoms.',
         [
           { text: 'Go Back', style: 'cancel' },
           { text: 'Skip', onPress: () => goBackToDashboard() }
@@ -51,51 +70,32 @@ const SymptomsLog = ({ navigation, route }) => {
       return;
     }
 
-    setLoading(true);
-    
-    try {
-      const actualPefValue = Math.round((pefPercentage / 100) * personalBest);
-      
-      // Calculate night symptoms based on severity (example logic)
-      const nightSympValue = severity >= 4 ? 3 : severity >= 2 ? 1 : 0;
-      
-      const readingData = {
-        night_symptoms: nightSympValue,
-        day_symptoms: severity,
-        pef: actualPefValue,
-        relief_use: reliefUse,
-        steps: 0,
-        mean_hr: 0,
-        sleep_minutes: 0,
-        temperature: 0,
-        aqi: 0,
-        hasCold: false
-      };
-      
-      console.log('📊 Submitting from SymptomsLog:', readingData);
-      
-      await api.post('/readings', readingData);
-      
       Alert.alert(
-        '✅ Symptoms & Reading Saved',
-        `PEF: ${pefPercentage}% (${actualPefValue} L/min)\nReliever: ${reliefUse}/week\nRisk level calculated!`,
+        '✅ Symptoms Saved',
+        `PEF: ${pefValue} L/min (${getPefPercentage()}%)\nReliever: ${reliefUse}/week\n\nTap "Analyse & Submit" on Dashboard to calculate risk.`,
         [{ text: 'OK', onPress: () => goBackToDashboard() }]
       );
-    } catch (error) {
-      console.error('Error saving:', error);
-      Alert.alert('Error', 'Failed to save. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    
   };
 
   const goBackToDashboard = () => {
-    navigation.navigate('Home', { 
-      updatedSymptoms: symptoms,
-      severity: severity,
-      notes: notes || ''
-    });
-  };
+  navigation.navigate('Home', { 
+    updatedSymptoms: symptoms,
+    severity: severity,
+    notes: notes || '',
+    // ✅ PASS BACK THE VALUES (preserving Dashboard's state)
+    nightSymptoms: existingNightSymptoms,  // Keep Dashboard's values
+    daySymptoms: existingDaySymptoms,      // Keep Dashboard's values
+    heartRate: existingHeartRate,          // Keep Dashboard's values
+    steps: existingSteps,                  // Keep Dashboard's values
+    hasCold: existingHasCold,              // Keep Dashboard's values
+    pefData: { value: pefValue },
+    reliefUse: reliefUse,
+    rescuePuffsToday: existingRescuePuffsToday,
+    controllerTaken: existingControllerTaken,
+    rescueStock: existingRescueStock
+  });
+};
 
   const handleSkip = () => {
     Alert.alert(
@@ -119,26 +119,26 @@ const SymptomsLog = ({ navigation, route }) => {
         <Text style={styles.subtitle}>Complete your daily asthma assessment</Text>
       </View>
 
-      {/* PEF Section */}
+      {/* PEF Section - L/min */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>🌬️ Peak Flow Reading</Text>
+        <Text style={styles.sectionTitle}>🌬️ Peak Flow Reading (L/min)</Text>
         <Text style={styles.pefValue}>
-          {pefPercentage}% = {Math.round((pefPercentage / 100) * personalBest)} L/min
+          {pefValue} L/min ({getPefPercentage()}% of personal best)
         </Text>
         <Slider
           style={{ width: '100%', height: 40 }}
-          minimumValue={0}
-          maximumValue={100}
-          step={5}
-          value={pefPercentage}
-          onValueChange={setPefPercentage}
+          minimumValue={100}
+          maximumValue={700}
+          step={10}
+          value={pefValue}
+          onValueChange={setPefValue}
           minimumTrackTintColor="#547bfb"
           maximumTrackTintColor="#e5e7eb"
         />
         <View style={styles.pefLabels}>
-          <Text style={styles.pefLabel}>0%</Text>
-          <Text style={styles.pefLabel}>50%</Text>
-          <Text style={styles.pefLabel}>100%</Text>
+          <Text style={styles.pefLabel}>100 L/min</Text>
+          <Text style={styles.pefLabel}>400 L/min</Text>
+          <Text style={styles.pefLabel}>700 L/min</Text>
         </View>
       </View>
 
@@ -215,8 +215,8 @@ const SymptomsLog = ({ navigation, route }) => {
           <Text style={styles.skipButtonText}>Skip</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
-          <Text style={styles.saveButtonText}>{loading ? 'Saving...' : 'Save & Analyze'}</Text>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} >
+          <Text style={styles.saveButtonText}>Save & Return</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

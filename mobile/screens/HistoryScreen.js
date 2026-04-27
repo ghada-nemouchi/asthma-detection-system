@@ -1,18 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
 import api from '../services/api';
+import { getUser } from '../utils/storage';
 
 export default function HistoryScreen() {
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [personalBest, setPersonalBest] = useState(450);
 
   useEffect(() => {
-    fetchHistory();
+    loadPersonalBest();
   }, []);
 
+  useEffect(() => {
+    if (personalBest) {
+      fetchHistory();
+    }
+  }, [personalBest]);
+
+  const loadPersonalBest = async () => {
+    try {
+      // Option 1: Fetch directly from API instead of storage
+      const response = await api.get('/patients/me');
+      if (response.data?.user?.personalBestPef) {
+        setPersonalBest(response.data.user.personalBestPef);
+        console.log('✅ Loaded personal best from API:', response.data.user.personalBestPef);
+      } else {
+        console.log('⚠️ No personal best found, using default 450');
+        setPersonalBest(450);
+      }
+    } catch (error) {
+      console.error('Error loading personal best:', error);
+      setPersonalBest(450);
+    }
+  };
   const fetchHistory = async () => {
     try {
       const response = await api.get('/readings/patient/me');
+      console.log('📊 History readings:', response.data.map(r => ({
+        pef_norm: r.pef_norm,
+        personalBest: personalBest,
+        calculated: r.pef_norm * personalBest
+      })));
       setReadings(response.data);
     } catch (error) {
       console.error(error);
@@ -33,6 +62,14 @@ export default function HistoryScreen() {
   const formatDate = (timestamp) => {
     const date = new Date(timestamp);
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
+
+  const getActualPef = (pefNorm) => {
+    if (!pefNorm || pefNorm === 0) return '—';
+    const calculated = Math.round(pefNorm * personalBest);
+    if (calculated < 100) return 100;
+    if (calculated > 700) return 700;
+    return calculated;
   };
 
   if (loading) {
@@ -69,7 +106,7 @@ export default function HistoryScreen() {
           </View>
           <View style={styles.metrics}>
             <Metric label="Risk Score" value={`${Math.round((item.riskScore || 0) * 100)}%`} />
-            <Metric label="PEF" value={`${Math.round(item.pef_norm * 100)}%`} />
+            <Metric label="PEF" value={`${getActualPef(item.pef_norm)} L/min`} />
             <Metric label="Reliever" value={`${item.relief_use}/week`} />
             <Metric label="Night Symptoms" value={`${item.night_symptoms}/7`} />
             <Metric label="Day Symptoms" value={`${item.day_symptoms}/7`} />
