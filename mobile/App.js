@@ -39,11 +39,11 @@ function CustomHeader({ navigation, route }) {
       alignItems: 'center',
       justifyContent: 'space-between',
       backgroundColor: '#547bfb',
-      paddingTop: 48,
+      paddingTop: 20,
       paddingBottom: 12,
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
     }}>
-      <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ padding: 8, alignItems: 'center' }}>
+      <TouchableOpacity onPress={() => navigation.navigate('Home')} style={{ padding: 1, alignItems: 'center' }}>
         <Ionicons name="home" size={24} color="#fff" />
         <Text style={{ fontSize: 10, color: '#fff', marginTop: 2 }}>Home</Text>
       </TouchableOpacity>

@@ -104,7 +104,7 @@ router.post('/', protect, async (req, res) => {
 
         // ✅ FIXED: Use the pef value from req.body
         const personalBest = patient.personalBestPef || 450;  // Default to 450 L/min
-        const pef_norm = Math.min(pef / personalBest, 1.0);   // Now 'pef' is defined!
+        const pef_norm = pef / personalBest;  
         
         const baselineHr = patient.baselineHr || 70;
         const baselineSteps = patient.baselineSteps || 5000;
@@ -172,7 +172,8 @@ router.post('/', protect, async (req, res) => {
             patientId,
             night_symptoms,
             day_symptoms,
-            pef_norm,                    // ✅ Store normalized value
+            pef_norm: pef_norm,
+            pef_actual: pef,                   // ✅ Store normalized value
             relief_use,
             steps:         steps         || 0,
             mean_hr:       mean_hr       || 0,
@@ -265,17 +266,27 @@ router.post('/', protect, async (req, res) => {
     }
 });
 // GET /api/readings/patient/me – logged-in patient's own history
+// routes/readings.js
 router.get('/patient/me', protect, async (req, res) => {
     try {
         const readings = await Reading.find({ patientId: req.user.id })
             .sort({ timestamp: -1 })
             .limit(50);
+        
+        // ✅ DEBUG: Log first reading to verify pef_actual is present
+        if (readings.length > 0) {
+            console.log('📊 First reading:', {
+                pef_actual: readings[0].pef_actual,
+                pef_norm: readings[0].pef_norm,
+                timestamp: readings[0].timestamp
+            });
+        }
+        
         res.json(readings);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
-
 // GET /api/readings/patient/:patientId – doctor views a patient's readings
 router.get('/patient/:patientId', protect, async (req, res) => {
     try {

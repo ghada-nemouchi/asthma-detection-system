@@ -198,6 +198,29 @@ useEffect(() => {
   };
 }, []);
 
+// Dans DashboardScreen, ajoutez ce useEffect au début
+useEffect(() => {
+  const initAuth = async () => {
+    const token = await getToken();
+    if (token) {
+      // S'assurer que les headers sont à jour
+      api.defaults.headers.Authorization = `Bearer ${token}`;
+      console.log('🔑 Dashboard - Token set in axios headers');
+    }
+    
+    const userData = await getUser();
+    if (!token || !userData) {
+      console.log('⚠️ No auth data, redirecting to login...');
+      navigation.replace('Login');
+    } else {
+      setUser(userData);
+      await loadData();  // ✅ Ajoutez cette ligne pour charger les données
+      await fetchUserMedications();  // ✅ Et celle-ci pour les médicaments
+    }
+  };
+  initAuth();
+}, []);
+
 
 // Save medication state whenever it changes
 useEffect(() => {
@@ -217,10 +240,7 @@ useEffect(() => {
   saveMedicationState();
 }, [rescuePuffsToday, controllerTaken, rescueStock, lastRescueTime]);
 
-// Load medication state on component mount
-// Modify your loadMedicationState useEffect:
   // ✅ FETCH medications on mount
-  // Add this after your other useEffects
   useEffect(() => {
     fetchUserMedications();
   }, []);
@@ -828,7 +848,7 @@ useEffect(() => {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen:  { flex: 1, backgroundColor: '#f3f4f6' },
-  content: { padding: 16, paddingBottom: 50 , paddingTop: 50 },
+  content: { padding: 12, paddingBottom: 50 , paddingTop: 12},
 
   riskCard: { borderRadius: 20, padding: 20, marginBottom: 16, alignItems: 'center' },
   riskLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },

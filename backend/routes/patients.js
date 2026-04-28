@@ -89,7 +89,38 @@ router.get('/me', protect, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
+// backend/routes/patients.js
+router.get('/me/personalized-values', protect, async (req, res) => {
+    try {
+        const patient = await User.findById(req.user.id);
+        const readings = await Reading.find({ patientId: req.user.id });
+        
+        // Calculer le vrai meilleur DEP
+        const pefValues = readings
+            .map(r => r.pef_norm && r.personalBest ? Math.round(r.pef_norm * r.personalBest) : null)
+            .filter(v => v !== null);
+        
+        const trueMaxPef = pefValues.length > 0 ? Math.max(...pefValues) : patient.personalBestPef;
+        
+        res.json({
+            success: true,
+            current: {
+                personalBestPef: patient.personalBestPef,
+                baselineHr: patient.baselineHr,
+                baselineSteps: patient.baselineSteps
+            },
+            calculated: {
+                personalBestPef: trueMaxPef,
+                baselineHr: patient.baselineHr,  // À améliorer
+                baselineSteps: patient.baselineSteps  // À améliorer
+            },
+            needsUpdate: trueMaxPef !== patient.personalBestPef
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 router.put('/:id/fcm', protect, async (req, res) => {
   try {
     const patient = await User.findByIdAndUpdate(
@@ -139,62 +170,128 @@ router.put('/me', protect, async (req, res) => {
   }
 });
 
+// routes/patients.js - POST /me/personal-best
 router.post('/me/personal-best', protect, async (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({ message: 'Patient only' });
     }
 
-    const threeWeeksAgo = new Date();
-    threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
-    
+    // ✅ Get ALL readings, using pef_actual as the real value
     const readings = await Reading.find({
       patientId: req.user.id,
-      timestamp: { $gte: threeWeeksAgo },
-      pef_norm: { $ne: null }
-    }).sort({ pef_norm: -1 });
+      $or: [
+        { pef_actual: { $ne: null, $gt: 0 } },  // Prefer pef_actual
+        { pef_norm: { $ne: null } }              // Fallback to pef_norm
+      ]
+    });
 
     if (readings.length === 0) {
       return res.json({
         success: false,
-        message: 'Not enough readings. Please submit daily readings for 2-3 weeks.',
+        message: 'Not enough readings. Please submit daily readings.',
         requiredDays: 14,
-        currentDays: readings.length
+        currentDays: 0
       });
     }
 
-    const highestPefNorm = readings[0].pef_norm;
-    let personalBestPef;
-    const DEFAULT_PEF = 450; 
-    if (req.user.personalBestPef && req.user.personalBestPef !== DEFAULT_PEF) {
-      personalBestPef = Math.round(highestPefNorm * req.user.personalBestPef);
-    } else {
-      personalBestPef = Math.round(highestPefNorm * DEFAULT_PEF);
+    // ✅ Calculate real PEF values from stored data
+    const pefValues = readings.map(r => {
+      if (r.pef_actual && r.pef_actual > 0) {
+        return r.pef_actual;  // Use the actual stored value
+      }
+      // Fallback for old readings without pef_actual
+      return Math.round((r.pef_norm || 0) * (req.user.personalBestPef || 450));
+    }).filter(v => v > 0);
+
+    if (pefValues.length === 0) {
+      return res.status(400).json({ 
+        error: 'Aucune valeur DEP valide trouvée' 
+      });
     }
 
+    // Find the maximum PEF value
+    const newPersonalBest = Math.max(...pefValues);
+    
+    // ✅ ONLY update the user's personalBestPef - DO NOT update readings!
     await User.findByIdAndUpdate(req.user.id, {
-      personalBestPef: personalBestPef,
+      personalBestPef: newPersonalBest,
       personalBestStatus: 'calculated',
       personalBestLastCalculated: new Date(),
       personalBestReadings: readings.slice(0, 14).map(r => ({
-        value: r.pef_norm,
+        value: r.pef_actual || r.pef_norm,
         date: r.timestamp
       }))
     });
 
+    console.log('📊 New Personal Best calculated:', newPersonalBest);
+    console.log('📊 Based on readings:', pefValues);
+
     res.json({
       success: true,
-      personalBestPef: personalBestPef,
-      message: `Your personal best PEF is ${personalBestPef} L/min`,
+      personalBestPef: newPersonalBest,
+      message: `Your personal best PEF is ${newPersonalBest} L/min`,
       readingsUsed: readings.length,
-      highestReading: Math.round(highestPefNorm * personalBestPef)
+      highestReading: newPersonalBest,
+      newPersonalBest: newPersonalBest 
     });
 
   } catch (error) {
+    console.error('Error calculating personal best:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Ajoutez cette fonction dans backend/routes/patients.js
+router.post('/me/update-personal-best', protect, async (req, res) => {
+    try {
+        const patientId = req.user.id;
+        
+        // Récupérer TOUTES les lectures du patient
+        const readings = await Reading.find({ patientId });
+        
+        if (readings.length === 0) {
+            return res.status(400).json({ 
+                error: 'Pas assez de lectures pour calculer le meilleur DEP' 
+            });
+        }
+        
+        // Extraire les valeurs DEP réelles
+        const pefValues = readings
+            .map(reading => {
+                // Si pef_norm existe, le recalculer
+                if (reading.pef_norm && reading.personalBest) {
+                    return Math.round(reading.pef_norm * reading.personalBest);
+                }
+                return null;
+            })
+            .filter(v => v !== null);
+        
+        if (pefValues.length === 0) {
+            return res.status(400).json({ 
+                error: 'Aucune valeur DEP valide trouvée' 
+            });
+        }
+        
+        // Trouver la valeur MAXIMALE
+        const newPersonalBest = Math.max(...pefValues);
+        
+        // Mettre à jour le patient
+        await User.findByIdAndUpdate(patientId, {
+            personalBestPef: newPersonalBest
+        });
+        
+        res.json({
+            success: true,
+            oldPersonalBest: req.user.personalBestPef,
+            newPersonalBest: newPersonalBest,
+            basedOnReadings: pefValues.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 router.get('/me/personal-best-status', protect, async (req, res) => {
   try {
     const patient = await User.findById(req.user.id);
@@ -426,6 +523,67 @@ router.get('/:id/export', protect, doctorOnly, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+// ============ PERSONALIZATION ENDPOINTS ============
+// ✅ À AJOUTER AVANT les routes génériques /:id
+
+// PUT /api/patients/:patientId/personalization - Mettre à jour les valeurs personnalisées
+router.put('/:patientId/personalization', protect, async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { personalBestPef, baselineHr, baselineSteps } = req.body;
+    
+    console.log('🎯 Updating personalization for patient:', patientId);
+    console.log('📊 New values:', { personalBestPef, baselineHr, baselineSteps });
+    
+    // Vérifier que le patient existe
+    const patient = await User.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient non trouvé' });
+    }
+    
+    // Vérifier les autorisations
+    if (req.user.role === 'doctor') {
+      // Le médecin ne peut modifier que ses propres patients
+      if (patient.doctorId?.toString() !== req.user.id) {
+        return res.status(403).json({ error: 'Accès non autorisé. Ce patient n\'est pas sous votre suivi.' });
+      }
+    } else if (req.user.role === 'patient') {
+      // Le patient ne peut modifier que ses propres valeurs
+      if (patient._id.toString() !== req.user.id) {
+        return res.status(403).json({ error: 'Accès non autorisé' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Rôle non autorisé' });
+    }
+    
+    // Mettre à jour uniquement les champs fournis
+    const updates = {};
+    if (personalBestPef !== undefined) updates.personalBestPef = personalBestPef;
+    if (baselineHr !== undefined) updates.baselineHr = baselineHr;
+    if (baselineSteps !== undefined) updates.baselineSteps = baselineSteps;
+    
+    const updated = await User.findByIdAndUpdate(
+      patientId,
+      updates,
+      { new: true, runValidators: true }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Valeurs personnalisées mises à jour',
+      patient: {
+        personalBestPef: updated.personalBestPef,
+        baselineHr: updated.baselineHr,
+        baselineSteps: updated.baselineSteps
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error updating personalization:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/pending-request', protect, async (req, res) => {
   try {
     console.log('📍 Pending request check for user:', req.user._id);

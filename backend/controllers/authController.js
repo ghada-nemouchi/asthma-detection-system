@@ -11,7 +11,9 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password, role, specialty, age, doctorId, personalBestPef } = req.body;
+    const { name, email, password, role, specialty, age, doctorId, personalBestPef , baselineHr,baselineSteps,  phone            
+
+    } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -38,6 +40,8 @@ const register = async (req, res) => {
       userData.age = age;
       userData.doctorId = doctorId;
       userData.personalBestPef = personalBestPef || 400;
+      userData.baselineHr = baselineHr || 70;        
+      userData.baselineSteps = baselineSteps || 5000; 
     }
 
     const user = await User.create(userData);
@@ -48,6 +52,11 @@ const register = async (req, res) => {
       email: user.email,
       role: user.role,
       specialty: user.specialty,
+      age: user.age,
+      phone: user.phone,
+      personalBestPef: user.personalBestPef,
+      baselineHr: user.baselineHr,
+      baselineSteps: user.baselineSteps,
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -71,6 +80,11 @@ const login = async (req, res) => {
         email: user.email,
         role: user.role,
         specialty: user.specialty,
+        age: user.age,
+        phone: user.phone,
+        personalBestPef: user.personalBestPef,
+        baselineHr: user.baselineHr,
+        baselineSteps: user.baselineSteps,
         token: generateToken(user._id),
       });
     } else {

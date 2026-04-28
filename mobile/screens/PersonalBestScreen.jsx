@@ -32,29 +32,31 @@ export default function PersonalBestScreen({ navigation }) {
   }, [loading, allReadings]);
 
   // Helper function to get recent readings with PEF values
-  const getRecentReadings = async () => {
+  const getRecentReadings = () => {
     if (!allReadings || allReadings.length === 0) return [];
     
-    try {
-      const profileResponse = await api.get('/patients/me');
-      const personalBestPef = profileResponse.data.user?.personalBestPef || 400;
+    return allReadings.slice(0, 7).map(reading => {
+      // Calculate PEF value
+      let pefValue = null;
       
-      return allReadings.slice(-7).reverse().map(reading => {
-        let pefValue = null;
-        if (reading.pef_norm !== undefined && reading.pef_norm !== null) {
-          pefValue = Math.round(reading.pef_norm * personalBestPef);
-        }
-        
-        return {
-          date: new Date(reading.timestamp || reading.createdAt || reading.date).toLocaleDateString(),
-          pef: pefValue,
-          riskLevel: reading.riskLevel
-        };
-      }).filter(r => r.pef !== null);
-    } catch (error) {
-      console.error('Error getting recent readings:', error);
-      return [];
-    }
+      // Priority 1: Use pef_actual if available (this NEVER changes)
+      if (reading.pef_actual && reading.pef_actual > 0) {
+        pefValue = reading.pef_actual;
+      }
+      // Priority 2: For old readings, calculate from pef_norm using the 
+      // ORIGINAL personal best at the time of reading (stored in the reading)
+      else if (reading.pef_norm && reading.pef_norm > 0) {
+        // We don't have the original personal best stored in the reading,
+        // so we use the CURRENT personal best as fallback
+        pefValue = Math.round(reading.pef_norm * (status?.personalBestValue || 400));
+      }
+      
+      return {
+        date: new Date(reading.timestamp).toLocaleDateString(),
+        pef: pefValue || '—',
+        riskLevel: reading.riskLevel
+      };
+    });
   };
 
   const loadData = async () => {
@@ -70,23 +72,26 @@ export default function PersonalBestScreen({ navigation }) {
       const readings = readingsResponse.data;
       setAllReadings(readings);
       
-      // 3. Calculate TRUE personal best from readings
+      // 3. Calculate TRUE personal best from pef_actual
       if (readings && readings.length > 0) {
-        const profileResponse = await api.get('/patients/me');
-        const personalBestPef = profileResponse.data.user?.personalBestPef || 400;
+        // ✅ Utiliser pef_actual (la valeur réelle) si disponible
+        const actualPefValues = readings
+          .filter(r => r.pef_actual)  // ← Utilise pef_actual
+          .map(r => r.pef_actual);
         
-        const pefValues = readings
-          .filter(reading => reading.pef_norm !== undefined && reading.pef_norm !== null)
-          .map(reading => Math.round(reading.pef_norm * personalBestPef));
-        
-        if (pefValues.length > 0) {
-          const maxPEF = Math.max(...pefValues);
+        if (actualPefValues.length > 0) {
+          const maxPEF = Math.max(...actualPefValues);
           setTruePersonalBest(maxPEF);
-          console.log('📊 Personal Best from profile:', personalBestPef);
-          console.log('📊 Calculated PEF values from readings:', pefValues);
-          console.log('🎯 True Personal Best (max from readings):', maxPEF);
+          console.log('🎯 True Personal Best (from pef_actual):', maxPEF);
+          console.log('📊 Actual PEF values:', actualPefValues);
         } else {
-          console.log('⚠️ No pef_norm values found in readings');
+          // Fallback: utiliser pef_norm (anciennes lectures)
+          const profileResponse = await api.get('/patients/me');
+          const storedPersonalBest = profileResponse.data.user?.personalBestPef || 400;
+          const maxPefNorm = Math.max(...readings.map(r => r.pef_norm || 0));
+          const maxPEF = Math.round(maxPefNorm * storedPersonalBest);
+          setTruePersonalBest(maxPEF);
+          console.log('🎯 True Personal Best (fallback from pef_norm):', maxPEF);
         }
       }
       
@@ -147,7 +152,7 @@ export default function PersonalBestScreen({ navigation }) {
   }
 
   const zones = getZoneInfo();
-  const bestFromReadings = truePersonalBest || status?.personalBestValue || 400;
+  const displayBest = truePersonalBest || status?.personalBestValue || 400;
 
   return (
     <ScrollView style={styles.container}>
@@ -160,7 +165,7 @@ export default function PersonalBestScreen({ navigation }) {
       {/* Current Best Value */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🏆 Your Personal Best</Text>
-        <Text style={styles.pbValue}>{bestFromReadings} L/min</Text>
+        <Text style={styles.pbValue}>{displayBest} L/min</Text>
         <Text style={styles.pbSubtext}>
           Based on {allReadings.length} total readings
         </Text>
@@ -319,7 +324,7 @@ export default function PersonalBestScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { backgroundColor: '#547bfb', padding: 30, paddingTop: 60, alignItems: 'center' },
+  header: { backgroundColor: '#547bfb', padding: 30, paddingTop: 30, alignItems: 'center' },
   title: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
   subtitle: { fontSize: 14, color: '#fff', opacity: 0.9, marginTop: 5 },
   card: { backgroundColor: '#fff', margin: 15, padding: 20, borderRadius: 16, elevation: 2 },

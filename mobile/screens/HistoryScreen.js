@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
 import api from '../services/api';
-import { getUser } from '../utils/storage';
 
 export default function HistoryScreen() {
   const [readings, setReadings] = useState([]);
@@ -20,7 +19,6 @@ export default function HistoryScreen() {
 
   const loadPersonalBest = async () => {
     try {
-      // Option 1: Fetch directly from API instead of storage
       const response = await api.get('/patients/me');
       if (response.data?.user?.personalBestPef) {
         setPersonalBest(response.data.user.personalBestPef);
@@ -34,17 +32,14 @@ export default function HistoryScreen() {
       setPersonalBest(450);
     }
   };
+
   const fetchHistory = async () => {
     try {
       const response = await api.get('/readings/patient/me');
-      console.log('📊 History readings:', response.data.map(r => ({
-        pef_norm: r.pef_norm,
-        personalBest: personalBest,
-        calculated: r.pef_norm * personalBest
-      })));
+      console.log('📊 History readings received:', response.data.length);
       setReadings(response.data);
     } catch (error) {
-      console.error(error);
+      console.error('Error fetching history:', error);
     } finally {
       setLoading(false);
     }
@@ -64,12 +59,19 @@ export default function HistoryScreen() {
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   };
 
-  const getActualPef = (pefNorm) => {
-    if (!pefNorm || pefNorm === 0) return '—';
-    const calculated = Math.round(pefNorm * personalBest);
-    if (calculated < 100) return 100;
-    if (calculated > 700) return 700;
-    return calculated;
+  // ✅ Fonction pour obtenir la valeur PEF réelle
+  const getActualPef = (reading) => {
+    // Prioritize pef_actual (the real L/min value)
+    if (reading.pef_actual && reading.pef_actual > 0) {
+      return Math.round(reading.pef_actual);
+    }
+    
+     // Fallback: calculate from pef_norm × personal best
+    if (reading.pef_norm && reading.pef_norm > 0) {
+      return Math.round(reading.pef_norm * personalBest);
+    }
+      
+    return '—';
   };
 
   if (loading) {
@@ -106,7 +108,7 @@ export default function HistoryScreen() {
           </View>
           <View style={styles.metrics}>
             <Metric label="Risk Score" value={`${Math.round((item.riskScore || 0) * 100)}%`} />
-            <Metric label="PEF" value={`${getActualPef(item.pef_norm)} L/min`} />
+            <Metric label="PEF" value={`${getActualPef(item)} L/min`} />
             <Metric label="Reliever" value={`${item.relief_use}/week`} />
             <Metric label="Night Symptoms" value={`${item.night_symptoms}/7`} />
             <Metric label="Day Symptoms" value={`${item.day_symptoms}/7`} />

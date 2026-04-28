@@ -81,15 +81,16 @@ export const removeUser = async () => {
   }
 };
 
-// Optional: Clear all data (useful for debugging)
+
+// Clear all authentication data
 export const clearAllData = async () => {
   try {
     await SecureStore.deleteItemAsync('token');
     await SecureStore.deleteItemAsync('user');
-    console.log('✅ All data cleared from secure store');
+    console.log('✅ All auth data cleared from secure store');
     return true;
   } catch (error) {
-    console.error('❌ Error clearing data:', error);
+    console.error('❌ Error clearing auth data:', error);
     return false;
   }
 };
