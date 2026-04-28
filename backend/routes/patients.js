@@ -70,7 +70,9 @@ router.get('/me', protect, async (req, res) => {
         readingCount: patient.readingCount || totalReadings,
         lastReading: patient.lastReading,
         createdAt: patient.createdAt,
-        doctorId: patient.doctorId
+        doctorId: patient.doctorId,
+        asthmaSeverity: patient.asthmaSeverity,
+        address: patient.address
       },
       stats: {
         totalReadings,
@@ -199,7 +201,7 @@ router.put('/me', protect, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Patient only.' });
     }
     
-    const allowedUpdates = ['name', 'phone', 'age', 'personalBestPef'];
+    const allowedUpdates = ['name', 'phone', 'age', 'personalBestPef', 'asthmaSeverity', 'address'];
     const updates = {};
     
     allowedUpdates.forEach(field => {

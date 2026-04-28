@@ -1,9 +1,10 @@
-import * as SecureStore from 'expo-secure-store';
+// utils/storage.js
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const storeToken = async (token) => {
   try {
-    await SecureStore.setItemAsync('token', token);
-    console.log('✅ Token stored securely');
+    await AsyncStorage.setItem('token', token);
+    console.log('✅ Token stored');
     return true;
   } catch (error) {
     console.error('❌ Error storing token:', error);
@@ -13,7 +14,7 @@ export const storeToken = async (token) => {
 
 export const getToken = async () => {
   try {
-    return await SecureStore.getItemAsync('token');
+    return await AsyncStorage.getItem('token');
   } catch (error) {
     console.error('❌ Error getting token:', error);
     return null;
@@ -22,8 +23,7 @@ export const getToken = async () => {
 
 export const removeToken = async () => {
   try {
-    await SecureStore.deleteItemAsync('token');
-    console.log('✅ Token removed');
+    await AsyncStorage.removeItem('token');
     return true;
   } catch (error) {
     console.error('❌ Error removing token:', error);
@@ -33,19 +33,8 @@ export const removeToken = async () => {
 
 export const storeUser = async (user) => {
   try {
-    // ✅ CRITICAL: Validate user has required fields
-    if (!user || !user._id) {
-      console.error('❌ CRITICAL ERROR: Attempting to store user without _id!');
-      console.error('User object:', user);
-      return false;
-    }
-    
-    console.log('💾 Storing user with ID:', user._id);
-    console.log('💾 User email:', user.email);
-    console.log('💾 User name:', user.name);
-    
-    await SecureStore.setItemAsync('user', JSON.stringify(user));
-    console.log('✅ User stored securely');
+    await AsyncStorage.setItem('user', JSON.stringify(user));
+    console.log('✅ User stored');
     return true;
   } catch (error) {
     console.error('❌ Error storing user:', error);
@@ -55,14 +44,13 @@ export const storeUser = async (user) => {
 
 export const getUser = async () => {
   try {
-    const user = await SecureStore.getItemAsync('user');
+    const user = await AsyncStorage.getItem('user');
     if (user) {
       const parsedUser = JSON.parse(user);
-      console.log('📖 Retrieved user from storage - ID:', parsedUser._id);
-      console.log('📖 Retrieved user from storage - Email:', parsedUser.email);
+      console.log('📖 User retrieved:', parsedUser.email);
       return parsedUser;
     }
-    console.log('📖 No user found in storage');
+    console.log('📖 No user found');
     return null;
   } catch (error) {
     console.error('❌ Error getting user:', error);
@@ -72,8 +60,7 @@ export const getUser = async () => {
 
 export const removeUser = async () => {
   try {
-    await SecureStore.deleteItemAsync('user');
-    console.log('✅ User removed from storage');
+    await AsyncStorage.removeItem('user');
     return true;
   } catch (error) {
     console.error('❌ Error removing user:', error);
@@ -81,13 +68,10 @@ export const removeUser = async () => {
   }
 };
 
-
-// Clear all authentication data
 export const clearAllData = async () => {
   try {
-    await SecureStore.deleteItemAsync('token');
-    await SecureStore.deleteItemAsync('user');
-    console.log('✅ All auth data cleared from secure store');
+    await AsyncStorage.multiRemove(['token', 'user']);
+    console.log('✅ All auth data cleared');
     return true;
   } catch (error) {
     console.error('❌ Error clearing auth data:', error);

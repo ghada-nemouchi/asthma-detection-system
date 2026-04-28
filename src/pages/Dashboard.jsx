@@ -394,9 +394,7 @@ const Dashboard = () => {
                               <h3 className="font-semibold text-gray-800 group-hover:text-green-600 truncate">
                                 {patient.name}
                               </h3>
-                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
-                                {patient.riskLevel?.toUpperCase() || 'LOW'}
-                              </span>
+                              <RiskBadge riskLevel={patient.riskLevel} />
                             </div>
                             <p className="text-sm text-gray-500 truncate">{patient.email}</p>
                             <div className="flex items-center gap-3 mt-1">

@@ -59,11 +59,13 @@ export default function PersonalBestScreen({ navigation }) {
     });
   };
 
+   // Dans PersonalBestScreen.js
+
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // 1. Get personal best status from backend
+      // 1. Get personal best status from backend (this has the SAVED value)
       const statusResponse = await api.get('/patients/me/personal-best-status');
       setStatus(statusResponse.data);
       
@@ -72,26 +74,16 @@ export default function PersonalBestScreen({ navigation }) {
       const readings = readingsResponse.data;
       setAllReadings(readings);
       
-      // 3. Calculate TRUE personal best from pef_actual
+      // 3. Calculate TRUE personal best from readings (for display only)
       if (readings && readings.length > 0) {
-        // ✅ Utiliser pef_actual (la valeur réelle) si disponible
         const actualPefValues = readings
-          .filter(r => r.pef_actual)  // ← Utilise pef_actual
+          .filter(r => r.pef_actual && r.pef_actual > 0)
           .map(r => r.pef_actual);
         
         if (actualPefValues.length > 0) {
           const maxPEF = Math.max(...actualPefValues);
           setTruePersonalBest(maxPEF);
-          console.log('🎯 True Personal Best (from pef_actual):', maxPEF);
-          console.log('📊 Actual PEF values:', actualPefValues);
-        } else {
-          // Fallback: utiliser pef_norm (anciennes lectures)
-          const profileResponse = await api.get('/patients/me');
-          const storedPersonalBest = profileResponse.data.user?.personalBestPef || 400;
-          const maxPefNorm = Math.max(...readings.map(r => r.pef_norm || 0));
-          const maxPEF = Math.round(maxPefNorm * storedPersonalBest);
-          setTruePersonalBest(maxPEF);
-          console.log('🎯 True Personal Best (fallback from pef_norm):', maxPEF);
+          console.log('🎯 True Personal Best (from readings):', maxPEF);
         }
       }
       
@@ -108,10 +100,12 @@ export default function PersonalBestScreen({ navigation }) {
     try {
       const response = await api.post('/patients/me/personal-best');
       if (response.data.success) {
+        // ✅ IMPORTANT: Wait a moment then reload data
+        await new Promise(resolve => setTimeout(resolve, 500));
         await loadData();
         Alert.alert(
           '✅ Personal Best Calculated!',
-          `${response.data.message}\n\nBased on ${response.data.readingsUsed} readings over the past 3 weeks.\nYour new personal best: ${response.data.newPersonalBest} L/min`,
+          `${response.data.message}\n\nBased on ${response.data.readingsUsed} readings.\nYour new personal best: ${response.data.newPersonalBest} L/min`,
           [{ text: 'OK' }]
         );
       } else {
