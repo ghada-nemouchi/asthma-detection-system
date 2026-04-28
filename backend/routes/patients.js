@@ -121,6 +121,65 @@ router.get('/me/personalized-values', protect, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+// GET /api/patients/:id/medications
+router.get('/:id/medications', protect, doctorOnly, async (req, res) => {
+  try {
+    const medications = await Medication.find({ patientId: req.params.id, isActive: true });
+    res.json(medications);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /api/patients/:id/medications
+router.post('/:id/medications', protect, doctorOnly, async (req, res) => {
+  try {
+    const medication = new Medication({
+      patientId: req.params.id,
+      ...req.body
+    });
+    await medication.save();
+    res.status(201).json(medication);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// PUT /api/patients/:id/medications/:medId
+router.put('/:id/medications/:medId', protect, doctorOnly, async (req, res) => {
+  try {
+    const medication = await Medication.findOne({
+      _id: req.params.medId,
+      patientId: req.params.id
+    });
+    if (!medication) {
+      return res.status(404).json({ message: 'Medication not found' });
+    }
+    Object.assign(medication, req.body);
+    await medication.save();
+    res.json(medication);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE /api/patients/:id/medications/:medId
+router.delete('/:id/medications/:medId', protect, doctorOnly, async (req, res) => {
+  try {
+    const medication = await Medication.findOne({
+      _id: req.params.medId,
+      patientId: req.params.id
+    });
+    if (!medication) {
+      return res.status(404).json({ message: 'Medication not found' });
+    }
+    medication.isActive = false;
+    await medication.save();
+    res.json({ message: 'Medication deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 router.put('/:id/fcm', protect, async (req, res) => {
   try {
     const patient = await User.findByIdAndUpdate(
@@ -644,18 +703,7 @@ router.get('/:id', protect, doctorOnly, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-// GET /api/patients/:id/medications - Doctor views patient's medications
-router.get('/:id/medications', protect, doctorOnly, async (req, res) => {
-  try {
-    const medications = await Medication.find({ 
-      patientId: req.params.id,
-      isActive: true 
-    });
-    res.json(medications);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+
 router.post('/', protect, doctorOnly, async (req, res) => {
   try {
     const patient = await User.create({

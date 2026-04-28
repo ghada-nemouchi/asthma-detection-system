@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema({
   
   // Patient-specific fields
   age: Number,
+  asthmaSeverity: { type: String, enum: ['mild', 'moderate', 'severe'], default: null },
   baselineHr: { type: Number, default: 70 },
   baselineSteps: { type: Number, default: 5000 },
   readingCount: { type: Number, default: 0 },
