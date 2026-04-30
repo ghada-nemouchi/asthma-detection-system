@@ -16,6 +16,7 @@ const alertRoutes = require('./routes/alerts');
 const environmentalRoutes = require('./routes/environmental');
 const emergencyContactsRoutes = require('./routes/emergencyContacts');
 const medicationRoutes = require('./routes/medications');
+const messageRoutes = require('./routes/messages');
 
 // ===== SOCKET.IO SETUP =====
 const io = socketIo(server, {
@@ -57,6 +58,8 @@ app.use('/api/alerts', alertRoutes);
 app.use('/api/environmental', environmentalRoutes);
 app.use('/api', emergencyContactsRoutes);  // ← This handles /api/emergency-contacts
 app.use('/api/medications', medicationRoutes);
+app.use('/api/messages', messageRoutes);
+
 // Test DB endpoint
 app.get('/api/test-db', async (req, res) => {
   try {
@@ -97,6 +100,11 @@ connectDB();
 io.on('connection', (socket) => {
   console.log('🔌 New client connected:', socket.id);
   
+  socket.on('join-user-room', (userId) => {
+    socket.join(`user-${userId}`);
+    console.log(`Socket ${socket.id} joined user room: ${userId}`);
+  });
+
   socket.on('join-patient-room', (patientId) => {
     socket.join(`patient-${patientId}`);
     console.log(`Socket ${socket.id} joined room: patient-${patientId}`);
@@ -110,7 +118,10 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
   });
+
+
 });
+
 
 // ===== START SERVER =====
 const PORT = process.env.PORT || 5000;

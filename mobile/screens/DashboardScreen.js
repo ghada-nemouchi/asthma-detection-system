@@ -46,8 +46,6 @@ function RiskCard({ riskScore, riskLevel }) {
   );
 }
 
-
-
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function DashboardScreen({ navigation }) {
   const socketRef = useRef(null);
@@ -284,6 +282,9 @@ useEffect(() => {
       // Fetch readings
       const response = await api.get('/patients/me');
       console.log('📊 PROFILE API RESPONSE:', JSON.stringify(response.data, null, 2));
+      
+      if (response.data?.user) {
+        setUser(prev => ({ ...prev, ...response.data.user }));}
       if (response.data?.length > 0) {
         const latest = response.data[0];
         setHasReadings(true);
@@ -461,7 +462,7 @@ useEffect(() => {
     setSimReliefUse(n => Math.max(n - 1, 0));
   };
 
-  // ── helpers ───────────────────────────────────────────────────────────────
+  // ── helpers Functions ───────────────────────────────────────────────────────────────
   const activeSymptoms = Object.entries(symptoms)
     .filter(([, v]) => v)
     .map(([k]) => k.replace(/([A-Z])/g, ' $1').trim());
@@ -502,7 +503,19 @@ useEffect(() => {
       Alert.alert('Error', 'Could not check for requests');
     }
   };
-
+  // Aller au chat avec le médecin
+  const goToChat = () => {
+    console.log('🔍 user object complet:', user);
+    console.log('🔍 user.doctorId:', user?.doctorId);  
+    if (user?.doctorId) {
+      navigation.navigate('Chat', {
+        doctorId: user.doctorId,
+        doctorName: 'My Doctor'
+      });
+    } else {
+      Alert.alert('No Doctor', 'You are not connected to a doctor yet.');
+    }
+  };
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <ScrollView
@@ -514,12 +527,25 @@ useEffect(() => {
       {/* ── Risk Card ── */}
       <RiskCard riskScore={riskData.riskScore} riskLevel={riskData.riskLevel} />
 
-      {/* ── Check Doctor Requests Button ── */}
+      {/* ── Chat & Check Doctor Requests Button ── */}
       <TouchableOpacity 
-        style={styles.checkRequestBtn}
-        onPress={checkPendingRequest}
+        style={[styles.checkRequestBtn, { backgroundColor: user?.doctorId ? '#3b82f6' : '#10b981' }]}
+        onPress={() => {
+          if (user?.doctorId) {
+            // Si a un médecin → aller au chat
+            navigation.navigate('Chat', {
+              doctorId: user.doctorId,
+              doctorName: 'My Doctor'
+            });
+          } else {
+            // Sinon → vérifier les requêtes
+            checkPendingRequest();
+          }
+        }}
       >
-        <Text style={styles.checkRequestBtnText}>📋 Check Doctor Requests</Text>
+        <Text style={styles.checkRequestBtnText}>
+          {user?.doctorId ? '💬 Chat with Doctor' : '📋 Find or Request Doctor'}
+        </Text>
       </TouchableOpacity>
 
       {/* ── Stats Row ── */}

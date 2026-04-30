@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PatientDetail from './pages/PatientDetail';
 import Register from './pages/Register';
+import ChatPage from './pages/ChatPage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -81,7 +82,14 @@ function App() {
           </ProtectedRoute>
         } 
       />
-      
+      <Route 
+        path="/chat/patient/:patientId" 
+        element={
+          <ProtectedRoute>
+            <ChatPage />
+          </ProtectedRoute>
+        } 
+      />
       {/* 404 - Redirect to Start */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

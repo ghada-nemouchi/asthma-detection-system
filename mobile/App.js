@@ -19,6 +19,7 @@ import DoctorRequestScreen from './screens/DoctorRequestScreen';
 import PersonalBestScreen from './screens/PersonalBestScreen';
 import EmergencyContactsScreen from './screens/EmergencyContactsScreen';
 import MedicationScreen from './screens/MedicationScreen';
+import ChatScreen from './screens/ChatScreen';
 
 const Stack = createStackNavigator();
 
@@ -39,7 +40,7 @@ function CustomHeader({ navigation, route }) {
       alignItems: 'center',
       justifyContent: 'space-between',
       backgroundColor: '#547bfb',
-      paddingTop: 20,
+      paddingTop: 45,
       paddingBottom: 12,
       paddingHorizontal: 12,
     }}>
@@ -181,6 +182,11 @@ export default function App() {
           name="EmergencyContacts" 
           component={EmergencyContactsScreen} 
           options={{ title: 'Emergency Contacts' }} 
+        />
+        <Stack.Screen 
+          name="Chat" 
+          component={ChatScreen} 
+          options={{ title: 'Chat with Doctor' }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

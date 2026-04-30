@@ -42,6 +42,9 @@ export const initializeSocket = async () => {
         socket.emit('join-doctors-room');
         console.log('📡 Doctor joined doctors room');
       }
+      
+      // Always join user room for messages
+      socket.emit('join-user-room', user._id);
     });
     
     socket.on('connect_error', (error) => {

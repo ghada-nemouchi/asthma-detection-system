@@ -20,12 +20,14 @@ import {
   Trash2,
   Pill,
   History,
-  Clock
+  Clock,
+  MessageCircle 
 } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import VitalsChart from '../components/VitalsChart';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ChatWidget from '../components/ChatWidget';
 
 const PatientDetail = () => {
   const { patientId } = useParams();
@@ -432,6 +434,7 @@ const saveProfileEdit = async () => {
           <div className="w-16 h-16 border-4 border-green-200 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading patient data...</p>
         </div>
+        <ChatWidget patientId={patientId} patientName={patient?.name} />
       </div>
     );
   }
@@ -478,6 +481,15 @@ const saveProfileEdit = async () => {
               <Download size={18} />
               Export Report
             </button>
+
+            <button
+              onClick={() => navigate(`/chat/patient/${patientId}`)}
+              className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-colors flex items-center gap-2"
+            >
+              <MessageCircle size={18} />
+              Chat
+            </button>
+
             <button 
               onClick={openEditModal}
               className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-colors flex items-center gap-2"
