@@ -1,0 +1,32 @@
+﻿# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Node modules
+node_modules/
+
+# Large FFmpeg binaries (exceed GitHub limit)
+tools/ffmpeg-master-latest-win64-gpl/bin/*.exe
+tools/ffmpeg.zip
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
