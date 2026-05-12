@@ -226,18 +226,16 @@ class AsthmaAudioDetector:
             print(f"🎯 Prediction: {asthma_probability:.3f}")
             
             # Classify severity
-            if asthma_probability < 0.25:
+            if asthma_probability < 0.40:
                 severity = "low"
                 message = "Low probability of asthma. You appear healthy!"
                 next_action = "healthy_exit"
-            elif asthma_probability < 0.50:
-                severity = "mild"
-                message = "Mild suspicion of asthma. Consider monitoring."
-                next_action = "monitoring"
-            elif asthma_probability < 0.75:
-                severity = "moderate"
-                message = "Moderate probability. Consult a healthcare provider."
-                next_action = "consult_doctor"
+                
+            elif  asthma_probability < 0.65:
+                severity = "uncertain"
+                message = "Your results are inconclusive. Please complete the questionnaire for a more accurate assessment."
+                next_action = "questionnaire"  # This will trigger the questionnaire
+            
             else:
                 severity = "high"
                 message = "High probability. Please consult a doctor."

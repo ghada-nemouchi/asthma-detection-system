@@ -1,41 +1,145 @@
-// screens/AudioScreeningScreen.js
-import React, { useState } from 'react';
+// screens/AudioScreeningScreen.js - ASYNCSTORAGE VERSION
+import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import AudioRecorder from '../components/AudioRecorder';
 import { Ionicons } from '@expo/vector-icons';
 
-const AudioScreeningScreen = ({ navigation }) => {
-    const [hasResult, setHasResult] = useState(false);
-    const [lastResult, setLastResult] = useState(null);
+const STORAGE_KEY = '@pending_audio_result';
 
-    const handleAudioResult = (result) => {
+const AudioScreeningScreen = ({ navigation, route }) => {
+    const [lastResult, setLastResult] = useState(null);
+    
+    // Check for pending audio result on mount
+    useEffect(() => {
+        checkPendingAudioResult();
+    }, []);
+    
+    // Listen for questionnaire result
+    useEffect(() => {
+        if (route.params?.questionnaireResult) {
+            console.log('📋 Received questionnaire result:', route.params.questionnaireResult);
+            handleCombinedResult(route.params.questionnaireResult);
+        }
+    }, [route.params?.questionnaireResult]);
+    
+    const checkPendingAudioResult = async () => {
+        try {
+            const stored = await AsyncStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                const audioResult = JSON.parse(stored);
+                console.log('📦 Retrieved pending audio result:', audioResult);
+                setLastResult(audioResult);
+                await AsyncStorage.removeItem(STORAGE_KEY);
+            }
+        } catch (error) {
+            console.error('Error checking pending audio:', error);
+        }
+    };
+
+    const handleAudioResult = async (result) => {
+        console.log('📊 Audio result:', result);
         setLastResult(result);
-        setHasResult(true);
         
         if (result.next_action === 'healthy_exit') {
             navigation.replace('HealthyExit', { 
                 score: result.asthma_probability * 100,
                 source: 'audio'
             });
+            
+        } else if (result.next_action === 'questionnaire') {
+            // Store audio result in AsyncStorage before navigating
+            try {
+                await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+                console.log('💾 Saved audio result to storage');
+            } catch (error) {
+                console.error('Error saving audio result:', error);
+            }
+            
+            Alert.alert(
+                '📋 Additional Assessment Needed',
+                `${result.message}\n\nProbability: ${Math.round(result.asthma_probability * 100)}%\n\nWould you like to complete the questionnaire for a more accurate result?`,
+                [
+                    { 
+                        text: 'Skip', 
+                        style: 'cancel',
+                        onPress: () => navigation.replace('HealthyExit', { 
+                            score: result.asthma_probability * 100,
+                            source: 'audio'
+                        })
+                    },
+                    { 
+                        text: 'Take Questionnaire', 
+                        onPress: () => {
+                            console.log('📝 Navigating to Questionnaire with audioProb:', result.asthma_probability);
+                            navigation.navigate('Questionnaire', { 
+                                audioProbability: result.asthma_probability
+                            });
+                        }
+                    }
+                ]
+            );
+            
         } else if (result.next_action === 'continue_to_app') {
             Alert.alert(
-                'Proceed to Registration',
-                'Based on your audio, you may have asthma. Would you like to create an account for daily monitoring?',
+                '⚠️ High Risk Detected',
+                `${result.message}\n\nProbability: ${Math.round(result.asthma_probability * 100)}%\n\nWould you like to create an account for professional monitoring?`,
                 [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Register', onPress: () => navigation.navigate('Register') }
                 ]
             );
-        } else if (result.next_action === 'consult_doctor') {
-            Alert.alert(
-                'Consult a Doctor',
-                'Your results suggest you should consult a healthcare provider for proper evaluation.',
-                [{ text: 'OK' }]
-            );
         }
+    };
+
+    const handleCombinedResult = async (questionnaireResult) => {
+        // Try to get audio result from storage first
+        let audioProb = 0;
+        try {
+            const stored = await AsyncStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                const audioResult = JSON.parse(stored);
+                audioProb = audioResult.asthma_probability;
+                console.log('📦 Retrieved audio prob from storage:', audioProb);
+                await AsyncStorage.removeItem(STORAGE_KEY);
+            } else {
+                audioProb = lastResult?.asthma_probability || 0;
+            }
+        } catch (error) {
+            console.error('Error retrieving audio result:', error);
+            audioProb = lastResult?.asthma_probability || 0;
+        }
+        
+        console.log('🎯 Combining results - Audio Prob:', audioProb);
+        console.log('📊 Questionnaire score:', questionnaireResult.questionnaire_score);
+        
+        if (!questionnaireResult || questionnaireResult.questionnaire_score === undefined) {
+            console.error('Invalid questionnaire result');
+            navigation.replace('HealthyExit', { 
+                score: audioProb * 100,
+                source: 'audio'
+            });
+            return;
+        }
+        
+        const questScore = questionnaireResult.questionnaire_score / 100;
+        
+        // Weighted average (60% audio, 40% questionnaire)
+        const combinedProb = (audioProb * 0.6) + (questScore * 0.4);
+        
+        console.log(`✅ Combined calculation: Audio=${audioProb}, Quest=${questScore}, Combined=${combinedProb}`);
+        console.log(`✅ Final score: ${Math.round(combinedProb * 100)}%`);
+        
+        // Clear params
+        navigation.setParams({ questionnaireResult: null });
+        
+        navigation.replace('HealthyExit', { 
+            score: Math.round(combinedProb * 100),
+            source: 'combined'
+        });
     };
 
     return (
@@ -69,18 +173,18 @@ const AudioScreeningScreen = ({ navigation }) => {
             <View style={styles.infoCard}>
                 <Text style={styles.infoTitle}>📖 How it works</Text>
                 <Text style={styles.infoText}>
-                1. Find a quiet place{'\n'}
-                2. Take a deep breath and cough naturally{'\n'}
-                3. Record for 5-10 seconds{'\n'}
-                4. AI analyzes your breathing pattern{'\n'}
-                5. Get instant results
+                    1. Find a quiet place{'\n'}
+                    2. Take a deep breath and cough naturally{'\n'}
+                    3. Record for 5-10 seconds{'\n'}
+                    4. AI analyzes your breathing pattern{'\n'}
+                    5. Get instant results
                 </Text>
             </View>
 
             <View style={styles.disclaimerCard}>
                 <Text style={styles.disclaimerTitle}>⚠️ Important Note</Text>
                 <Text style={styles.disclaimerText}>
-                This tool uses a machine learning model with 70% accuracy trained on the ICBHI Respiratory Sound Database. It is a screening tool only and not a substitute for professional medical diagnosis.
+                    This tool uses a machine learning model with 70% accuracy trained on the ICBHI Respiratory Sound Database. It is a screening tool only and not a substitute for professional medical diagnosis.
                 </Text>
             </View>
         </ScrollView>

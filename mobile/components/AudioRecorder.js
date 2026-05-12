@@ -91,14 +91,11 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
             console.log('Audio analysis result:', data);
             setResult(data);
             
-            if (onResult) onResult(data);
+            if (onResult) {
+                onResult(data);
+            }
             
-            Alert.alert(
-                data.severity === 'high' ? '⚠️ Analysis Result' : '📊 Analysis Result',
-                `${data.message}\n\nProbability: ${Math.round(data.asthma_probability * 100)}%\nConfidence: ${Math.round(data.confidence * 100)}%`,
-                [{ text: 'OK' }]
-            );
-            
+                        
         } catch (error) {
             console.error('Analysis error:', error);
             Alert.alert('Error', 'Failed to analyze audio. Please try again.');
@@ -161,7 +158,7 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
                 )}
             </TouchableOpacity>
             
-            {result && !analyzing && (
+            {result && !analyzing && !onResult && (
                 <View style={[styles.resultCard, { borderLeftColor: getSeverityColor() }]}>
                     <Text style={styles.resultTitle}>
                         {result.severity === 'high' ? '⚠️ High Probability' :

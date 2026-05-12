@@ -1,4 +1,4 @@
-// screens/QuestionnaireScreen.js
+// screens/QuestionnaireScreen.js - FIXED VERSION
 import React, { useState } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -54,10 +54,9 @@ const NHANES_QUESTIONS = [
 ];
 
 const QuestionnaireScreen = ({ navigation, route }) => {
+    const { audioProbability, onResult } = route.params || {};
     const [answers, setAnswers] = useState({});
     const [loading, setLoading] = useState(false);
-    
-    const onResult = route.params?.onResult;
 
     const toggleAnswer = (questionId, value) => {
         setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -92,19 +91,29 @@ const QuestionnaireScreen = ({ navigation, route }) => {
         
         const score = calculateScore();
         
+        // Combine with audio probability if available
+        let finalScore = score;
+        let source = 'questionnaire';
+        
+        if (audioProbability) {
+            // Weighted: 40% audio, 60% questionnaire
+            finalScore = (audioProbability * 40) + (score * 0.6);
+            source = 'combined';
+        }
+        
         let severity = 'low';
         let message = '';
         let nextAction = 'healthy_exit';
         
-        if (score >= 70) {
+        if (finalScore >= 70) {
             severity = 'high';
-            message = 'High probability of asthma based on questionnaire. Please consult a doctor.';
+            message = 'High probability of asthma based on assessment. Please consult a doctor.';
             nextAction = 'continue_to_app';
-        } else if (score >= 40) {
+        } else if (finalScore >= 40) {
             severity = 'moderate';
-            message = 'Moderate probability. Consider monitoring your symptoms and consult a doctor.';
+            message = 'Moderate probability. Consider monitoring your symptoms.';
             nextAction = 'monitoring';
-        } else if (score >= 20) {
+        } else if (finalScore >= 20) {
             severity = 'mild';
             message = 'Mild suspicion. Monitor for any changes in symptoms.';
             nextAction = 'monitoring';
@@ -117,26 +126,36 @@ const QuestionnaireScreen = ({ navigation, route }) => {
         const result = {
             success: true,
             questionnaire_score: score,
+            combined_score: finalScore,
             severity: severity,
             message: message,
             next_action: nextAction,
-            model: 'NHANES-based screener'
+            model: source === 'combined' ? 'Audio + Questionnaire' : 'NHANES-based screener'
         };
         
-        if (onResult) {
-            onResult(result);
-        }
-        
-        Alert.alert(
-            severity === 'high' ? '⚠️ Assessment Result' : '📊 Assessment Result',
-            `${message}\n\nScore: ${Math.round(score)}%`,
-            [{ text: 'OK' }]
-        );
-        
-        if (nextAction === 'healthy_exit') {
-            navigation.navigate('HealthyExit', { score: Math.round(score) });
-        } else if (nextAction === 'continue_to_app') {
-            navigation.navigate('Register');
+        if (audioProbability !== undefined) {
+        console.log('📤 Sending questionnaireResult:', result);
+        // Coming from audio screening - pass result back via navigation params
+        navigation.navigate('AudioScreening', { 
+            questionnaireResult: result 
+        });
+        } else {
+            // Direct navigation if coming from menu (not from audio)
+            if (nextAction === 'healthy_exit') {
+                navigation.replace('HealthyExit', { score: Math.round(finalScore), source });
+            } else if (nextAction === 'continue_to_app') {
+                Alert.alert(
+                    severity === 'high' ? '⚠️ Assessment Result' : '📊 Assessment Result',
+                    `${message}\n\nScore: ${Math.round(finalScore)}%`,
+                    [{ text: 'OK', onPress: () => navigation.navigate('Register') }]
+                );
+            } else {
+                Alert.alert(
+                    severity === 'high' ? '⚠️ Assessment Result' : '📊 Assessment Result',
+                    `${message}\n\nScore: ${Math.round(finalScore)}%`,
+                    [{ text: 'OK' }]
+                );
+            }
         }
     };
 

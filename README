@@ -1,0 +1,10 @@
+## FFmpeg Installation
+
+This app requires FFmpeg for audio processing.
+
+### Windows:
+```powershell
+# Using Chocolatey
+choco install ffmpeg
+
+# Or download from: https://www.gyan.dev/ffmpeg/builds/
