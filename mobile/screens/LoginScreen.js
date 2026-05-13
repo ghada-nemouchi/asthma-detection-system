@@ -1,4 +1,4 @@
-// screens/LoginScreen.js
+// screens/LoginScreen.js - With "Take Screening Test" Button
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator,
@@ -43,8 +43,8 @@ export default function LoginScreen({ navigation }) {
       
       // Store user with both _id and id fields
       const userData = {
-        _id: response.data._id,  // Add this for socket
-        id: response.data._id,   // Keep for compatibility
+        _id: response.data._id,
+        id: response.data._id,
         name: response.data.name,
         email: response.data.email,
         role: response.data.role
@@ -52,7 +52,6 @@ export default function LoginScreen({ navigation }) {
       
       console.log('User data to store:', userData);
       
-      // Validate response
       if (!token) {
         console.error('❌ No token in response');
         setError('Invalid server response. Please try again.');
@@ -60,7 +59,6 @@ export default function LoginScreen({ navigation }) {
         return;
       }
       
-      // Check role - only patients can use this app
       if (userData.role !== 'patient') {
         console.log('❌ Wrong role:', userData.role);
         setError(`This app is for patients only. Your role is: ${userData.role || 'unknown'}`);
@@ -68,15 +66,12 @@ export default function LoginScreen({ navigation }) {
         return;
       }
       
-      // Store credentials using AsyncStorage directly
       console.log('💾 Storing token and user data...');
       await AsyncStorage.setItem('token', token);
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       
-      // Also set in api default headers
       api.defaults.headers.Authorization = `Bearer ${token}`;
       
-      // Verify storage
       const verifyToken = await AsyncStorage.getItem('token');
       const verifyUser = await AsyncStorage.getItem('user');
       console.log('Verification - Token stored:', !!verifyToken);
@@ -90,14 +85,11 @@ export default function LoginScreen({ navigation }) {
       }
       
       console.log('✅ Login successful! Navigating to Dashboard...');
-      
-      // Navigate to Dashboard
       navigation.replace('Home');
       
     } catch (error) {
       console.error('❌ Login error:', error);
       
-      // Handle different error types
       if (error.response) {
         const status = error.response.status;
         const message = error.response.data?.message || error.response.data?.error;
@@ -345,7 +337,33 @@ export default function LoginScreen({ navigation }) {
               <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
             </View>
 
-            
+            {/* 🎤 TAKE SCREENING TEST BUTTON - ADDED */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('AudioScreening')}
+              activeOpacity={0.8}
+              style={{
+                width: '100%',
+                backgroundColor: '#eff6ff',
+                paddingVertical: 16,
+                borderRadius: 16,
+                marginBottom: 24,
+                borderWidth: 1,
+                borderColor: '#bfdbfe',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontSize: 18 }}>🎤</Text>
+              <Text style={{ 
+                color: '#547bfb', 
+                fontWeight: '600', 
+                fontSize: 16 
+              }}>
+                Take Screening Test
+              </Text>
+            </TouchableOpacity>
 
             {/* Sign up link */}
             <View style={{ alignItems: 'center' }}>

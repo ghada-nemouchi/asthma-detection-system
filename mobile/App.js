@@ -23,6 +23,7 @@ import ChatScreen from './screens/ChatScreen';
 import AudioScreeningScreen from './screens/AudioScreeningScreen';
 import QuestionnaireScreen from './screens/QuestionnaireScreen';
 import HealthyExitScreen from './screens/HealthyExitScreen';
+import StartScreen from './screens/StartScreen';
 
 const Stack = createStackNavigator();
 
@@ -117,7 +118,12 @@ export default function App() {
   return (
     <NavigationContainer ref={navigationRef}>
       <SocketManager navigation={navigationRef.current} />
-      <Stack.Navigator initialRouteName="AudioScreening">
+      <Stack.Navigator initialRouteName="Start"> 
+        <Stack.Screen 
+          name="Start" 
+          component={StartScreen} 
+          options={{ headerShown: false }} 
+        />
         <Stack.Screen 
           name="Login" 
           component={LoginScreen} 
@@ -132,11 +138,11 @@ export default function App() {
           name="AudioScreening" 
           component={AudioScreeningScreen} 
           options={{ title: 'Audio Screening' }} 
-      />
+        />
         <Stack.Screen 
             name="Questionnaire" 
             component={QuestionnaireScreen} 
-            options={{ title: 'Questionnaire' }} 
+            options={{ title: 'Health Questionnaire' }} 
         />
         <Stack.Screen 
             name="HealthyExit" 
