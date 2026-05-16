@@ -24,6 +24,7 @@ import AudioScreeningScreen from './screens/AudioScreeningScreen';
 import QuestionnaireScreen from './screens/QuestionnaireScreen';
 import HealthyExitScreen from './screens/HealthyExitScreen';
 import StartScreen from './screens/StartScreen';
+import ScreeningTestScreen from './screens/ScreeningTestScreen';
 
 const Stack = createStackNavigator();
 
@@ -157,6 +158,11 @@ export default function App() {
 
           })}
         />
+        <Stack.Screen 
+          name="ScreeningTest" 
+          component={ScreeningTestScreen} 
+          options={{ headerShown: false }} 
+      />
         <Stack.Screen 
           name="History" 
           component={HistoryScreen} 

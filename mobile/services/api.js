@@ -85,6 +85,13 @@ export const analyzeAudio = async (audioBase64) => {
     } catch (error) {
         console.error('❌ Audio analysis failed:', error.message);
         
+        // Retry up to 2 times on network errors
+        if (retryCount < 2 && (error.message === 'Network Error' || error.code === 'ECONNABORTED')) {
+            console.log(`🔄 Retrying... (${retryCount + 1}/2)`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            return analyzeAudio(audioBase64, retryCount + 1);
+        }
+        
         if (error.response) {
             console.error('Server response:', error.response.data);
             return error.response.data;

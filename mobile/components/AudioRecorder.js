@@ -7,7 +7,7 @@ import {
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../services/api';
+import api, { analyzeAudio } from '../services/api'; 
 
 const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
     const [recording, setRecording] = useState(null);
@@ -17,9 +17,31 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
     const [recordingTime, setRecordingTime] = useState(0);
     const timerRef = useRef(null);
     const animation = useRef(new Animated.Value(0)).current;
+    
+    // health check function
+    const checkBackendHealth = async () => {
+        try {
+            const response = await fetch('http://192.168.100.15:5000/health');
+            return response.ok;
+        } catch (error) {
+            console.error('Backend health check failed:', error);
+            return false;
+        }
+    };
 
     const startRecording = async () => {
         try {
+            // Check backend health before recording
+            const isBackendReachable = await checkBackendHealth();
+            if (!isBackendReachable) {
+                Alert.alert(
+                    'Connection Error', 
+                    'Cannot reach server. Make sure your phone and computer are on the same WiFi network.\n\n' +
+                    'Computer IP: 192.168.100.15:5000'
+                );
+                return;
+            }
+
             const permission = await Audio.requestPermissionsAsync();
             if (permission.status !== 'granted') {
                 Alert.alert('Permission needed', 'Microphone access is required');
@@ -32,7 +54,27 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
             });
 
             const { recording: newRecording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
+                {
+                    ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+                    android: {
+                    extension: '.wav',
+                    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+                    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+                    sampleRate: 16000,
+                    numberOfChannels: 1,
+                    bitRate: 128000,
+                },
+                ios: {
+                    extension: '.wav',
+                    audioQuality: Audio.IOSAudioQuality.MAX,
+                    sampleRate: 16000,
+                    numberOfChannels: 1,
+                    bitRate: 128000,
+                    linearPCMBitDepth: 16,
+                    linearPCMIsBigEndian: false,
+                    linearPCMIsFloat: false,
+                },
+            }
             );
             setRecording(newRecording);
             setIsRecording(true);
@@ -82,12 +124,9 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
                 encoding: FileSystem.EncodingType.Base64,
             });
             
-            // Call backend directly using api instance
-            const response = await api.post('/analyze-audio', {
-                audio_base64: base64
-            });
-            const data = response.data;
-            
+            //  USE the analyzeAudio function with retry logic
+            const data = await analyzeAudio(base64);
+
             console.log('Audio analysis result:', data);
             setResult(data);
             
@@ -95,6 +134,11 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
                 onResult(data);
             }
             
+            // Show alert if there was an error
+            if (data.error) {
+                Alert.alert('Analysis Error', data.message || 'Failed to analyze audio');
+            }
+
                         
         } catch (error) {
             console.error('Analysis error:', error);
@@ -170,9 +214,7 @@ const AudioRecorder = ({ onResult, buttonText = "Record Cough" }) => {
                         Probability: {Math.round(result.asthma_probability * 100)}%
                     </Text>
                     <Text style={styles.resultMessage}>{result.message}</Text>
-                    <Text style={styles.resultNote}>
-                        Model accuracy: 70.11% • Not a medical diagnosis
-                    </Text>
+                    
                 </View>
             )}
         </View>

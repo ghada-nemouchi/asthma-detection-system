@@ -337,7 +337,7 @@ export default function LoginScreen({ navigation }) {
               <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
             </View>
 
-            {/* 🎤 TAKE SCREENING TEST BUTTON - ADDED */}
+            {/* 🎤 TAKE SCREENING TEST BUTTON - ADDED
             <TouchableOpacity
               onPress={() => navigation.navigate('AudioScreening')}
               activeOpacity={0.8}
@@ -363,8 +363,29 @@ export default function LoginScreen({ navigation }) {
               }}>
                 Take Screening Test
               </Text>
-            </TouchableOpacity>
-
+            </TouchableOpacity> */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ScreeningTest')}  // ← Changement ici
+              activeOpacity={0.8}
+              style={{
+                  width: '100%',
+                  backgroundColor: '#eff6ff',
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  marginBottom: 24,
+                  borderWidth: 1,
+                  borderColor: '#bfdbfe',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 10,
+              }}
+          >
+              <Text style={{ fontSize: 18 }}>🎤</Text>
+              <Text style={{ color: '#547bfb', fontWeight: '600', fontSize: 16 }}>
+                  Take Screening Test
+              </Text>
+          </TouchableOpacity>
             {/* Sign up link */}
             <View style={{ alignItems: 'center' }}>
               <Text style={{ color: '#6b7280', fontSize: 14 }}>

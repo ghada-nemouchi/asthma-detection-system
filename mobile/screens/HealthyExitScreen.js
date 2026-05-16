@@ -1,8 +1,8 @@
-// screens/HealthyExitScreen.js - CLEAN VERSION (no duplicate styles)
-import React, { useEffect } from 'react';
+// screens/HealthyExitScreen.js - Professional Medical Assessment Screen
+import React, { useEffect, useRef } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView,
-    BackHandler, Dimensions
+    BackHandler, Dimensions, Animated
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,8 +10,32 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width } = Dimensions.get('window');
 
 const HealthyExitScreen = ({ navigation, route }) => {
-    const { score = 49, source = 'audio' } = route.params || {};
-
+    const { 
+        score = 49, 
+        source = 'audio', 
+        severity = 'moderate', 
+        message: resultMessage 
+    } = route.params || {};
+    
+    // Animation values
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(30)).current;
+    
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 600,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 600,
+                useNativeDriver: true,
+            })
+        ]).start();
+    }, []);
+    
     // Handle Android back button
     useEffect(() => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -20,95 +44,227 @@ const HealthyExitScreen = ({ navigation, route }) => {
         });
         return () => backHandler.remove();
     }, [navigation]);
-
-    const getScoreMessage = () => {
+    
+    // Clinical assessment based on score
+    const getClinicalAssessment = () => {
         if (score < 30) {
             return {
-                title: "Excellent Respiratory Health",
-                description: "Your results show no concerning patterns. Continue your healthy lifestyle!",
-                icon: "🎉",
-                color: '#10b981'
+                grade: 'A',
+                status: 'Optimal',
+                description: 'No significant respiratory abnormalities detected.',
+                color: '#10b981',
+                gradient: ['#10b981', '#059669'],
+                icon: 'medal-outline',
+                recommendations: [
+                    'Continue current healthy lifestyle practices',
+                    'Annual routine health check-up recommended',
+                    'Maintain regular physical activity',
+                    'Follow up if new symptoms develop'
+                ]
             };
         }
         if (score < 50) {
             return {
-                title: "Normal Respiratory Pattern",
-                description: "No immediate concerns detected. Routine monitoring is recommended.",
-                icon: "✅",
-                color: '#f59e0b'
+                grade: 'B',
+                status: 'Mild Risk',
+                description: 'Minor respiratory variations observed. Clinical correlation advised.',
+                color: '#f59e0b',
+                gradient: ['#f59e0b', '#d97706'],
+                icon: 'fitness-outline',
+                recommendations: [
+                    'Schedule follow-up in 3 months',
+                    'Monitor for wheezing or shortness of breath',
+                    'Consider pulmonary function testing',
+                    'Avoid known respiratory irritants'
+                ]
+            };
+        }
+        if (score < 70) {
+            return {
+                grade: 'C',
+                status: 'Moderate Risk',
+                description: 'Notable respiratory patterns detected. Medical evaluation recommended.',
+                color: '#ef4444',
+                gradient: ['#ef4444', '#dc2626'],
+                icon: 'warning-outline',
+                recommendations: [
+                    'Consult healthcare provider within 2-4 weeks',
+                    'Complete pulmonary function testing',
+                    'Document symptom frequency and triggers',
+                    'Review medication history with physician'
+                ]
             };
         }
         return {
-            title: "Borderline Indicators",
-            description: "Minor variations detected. Consider follow-up if symptoms develop.",
-            icon: "📊",
-            color: '#ef4444'
+            grade: 'D',
+            status: 'High Risk',
+            description: 'Significant respiratory concerns identified. Prompt medical evaluation strongly advised.',
+            color: '#7f1d1d',
+            gradient: ['#7f1d1d', '#991b1b'],
+            icon: 'alert-circle-outline',
+            recommendations: [
+                'URGENT: Schedule medical evaluation within 1-2 weeks',
+                'Complete comprehensive pulmonary assessment',
+                'Avoid triggers and maintain symptom diary',
+                'Discuss treatment options with pulmonologist'
+            ]
         };
     };
-
-    const message = getScoreMessage();
-
+    
+    const assessment = getClinicalAssessment();
+    
+    // Get source display text
+    const getSourceDisplay = () => {
+        switch(source) {
+            case 'audio': return 'AI Voice Analysis';
+            case 'combined': return 'Multimodal Assessment';
+            case 'questionnaire': return 'Clinical Questionnaire';
+            default: return 'Respiratory Screening';
+        }
+    };
+    
+    // Get severity badge color
+    const getSeverityBadge = () => {
+        switch(severity) {
+            case 'high': return { bg: '#fee2e2', text: '#991b1b', label: 'High' };
+            case 'moderate': return { bg: '#fed7aa', text: '#92400e', label: 'Moderate' };
+            case 'mild': return { bg: '#d1fae5', text: '#065f46', label: 'Mild' };
+            default: return { bg: '#e0e7ff', text: '#3730a3', label: 'Low' };
+        }
+    };
+    
+    const severityBadge = getSeverityBadge();
+    
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             <LinearGradient
-                colors={[message.color, message.color + 'dd']}
+                colors={assessment.gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.header}
             >
-                <View style={styles.iconContainer}>
-                    <Ionicons name="heart-circle" size={80} color="#fff" />
-                    <Text style={styles.emoji}>{message.icon}</Text>
-                </View>
-                <Text style={styles.title}>{message.title}</Text>
-                <Text style={styles.subtitle}>
-                    {source === 'audio' ? 'AI Voice Analysis' : 'Health Questionnaire'}
-                </Text>
+                <Animated.View 
+                    style={[
+                        styles.headerContent,
+                        {
+                            opacity: fadeAnim,
+                            transform: [{ translateY: slideAnim }]
+                        }
+                    ]}
+                >
+                    <View style={styles.iconContainer}>
+                        <Ionicons name={assessment.icon} size={70} color="#fff" />
+                    </View>
+                    <Text style={styles.grade}>{assessment.grade}</Text>
+                    <Text style={styles.status}>{assessment.status} Risk</Text>
+                    <View style={[styles.badge, { backgroundColor: severityBadge.bg }]}>
+                        <Text style={[styles.badgeText, { color: severityBadge.text }]}>
+                            {severityBadge.label} Suspicion
+                        </Text>
+                    </View>
+                </Animated.View>
             </LinearGradient>
             
-            <View style={styles.card}>
-                <Text style={styles.scoreLabel}>Respiratory Health Score</Text>
-                <Text style={[styles.scoreValue, { color: message.color }]}>
-                    {Math.round(score)}%
-                </Text>
-                <View style={styles.scoreBar}>
-                    <View style={[styles.scoreBarFill, { width: `${score}%`, backgroundColor: message.color }]} />
+            <Animated.View 
+                style={[
+                    styles.content,
+                    {
+                        opacity: fadeAnim,
+                        transform: [{ translateY: slideAnim }]
+                    }
+                ]}
+            >
+                {/* Score Card */}
+                <View style={styles.scoreCard}>
+                    <Text style={styles.scoreLabel}>Respiratory Health Index</Text>
+                    <Text style={[styles.scoreValue, { color: assessment.color }]}>
+                        {Math.round(score)}<Text style={styles.scorePercent}>/100</Text>
+                    </Text>
+                    <View style={styles.scoreBarContainer}>
+                        <View style={styles.scoreBar}>
+                            <View 
+                                style={[
+                                    styles.scoreBarFill, 
+                                    { width: `${score}%`, backgroundColor: assessment.color }
+                                ]} 
+                            />
+                        </View>
+                    </View>
+                    <Text style={styles.scoreDescription}>
+                        {resultMessage || assessment.description}
+                    </Text>
+                    <View style={styles.sourceBadge}>
+                        <Ionicons name="analytics-outline" size={14} color="#6b7280" />
+                        <Text style={styles.sourceText}>
+                            Assessment Source: {getSourceDisplay()}
+                        </Text>
+                    </View>
                 </View>
-                <Text style={styles.scoreDescription}>{message.description}</Text>
-            </View>
-            
-            <View style={styles.recommendationsBox}>
-                <Text style={styles.recommendationsTitle}>💡 Recommendations</Text>
-                <Text style={styles.recommendationsText}>
-                    • Continue regular physical activity{'\n'}
-                    • Monitor for any new or worsening symptoms{'\n'}
-                    • Schedule routine check-ups with your healthcare provider{'\n'}
-                    • Re-test every 3-6 months or if symptoms develop
-                </Text>
-            </View>
-            
-            <TouchableOpacity 
-                style={styles.primaryBtn}
-                onPress={() => navigation.replace('Login')}
-            >
-                <Text style={styles.primaryBtnText}>Continue to Login</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-                style={styles.secondaryBtn}
-                onPress={() => navigation.replace('AudioScreening')}
-            >
-                <Ionicons name="mic" size={20} color="#547bfb" />
-                <Text style={styles.secondaryBtnText}>Re-take Screening</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.disclaimerBox}>
-                <Ionicons name="warning-outline" size={16} color="#9ca3af" />
-                <Text style={styles.disclaimer}>
-                    This AI-powered screening tool is for informational purposes only. 
-                    It is not a substitute for professional medical advice, diagnosis, or treatment.
-                </Text>
-            </View>
+                
+                {/* Clinical Recommendations */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="medkit-outline" size={22} color="#547bfb" />
+                        <Text style={styles.sectionTitle}>Clinical Recommendations</Text>
+                    </View>
+                    {assessment.recommendations.map((rec, index) => (
+                        <View key={index} style={styles.recommendationItem}>
+                            <View style={[styles.bulletPoint, { backgroundColor: assessment.color }]} />
+                            <Text style={styles.recommendationText}>{rec}</Text>
+                        </View>
+                    ))}
+                </View>
+                
+                {/* Additional Information */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="information-circle-outline" size={22} color="#547bfb" />
+                        <Text style={styles.sectionTitle}>Important Information</Text>
+                    </View>
+                    <View style={styles.infoBox}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#547bfb" />
+                        <Text style={styles.infoText}>
+                            This AI-powered screening analyzes respiratory patterns using advanced machine learning algorithms. Results should be interpreted by qualified healthcare professionals.
+                        </Text>
+                    </View>
+                </View>
+                
+                {/* Action Buttons */}
+                <TouchableOpacity 
+                    style={styles.primaryButton}
+                    onPress={() => navigation.replace('Login')}
+                    activeOpacity={0.9}
+                >
+                    <LinearGradient
+                        colors={['#547bfb', '#3b82f6']}
+                        style={styles.primaryGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                    >
+                        <Text style={styles.primaryButtonText}>Return to Login</Text>
+                        <Ionicons name="arrow-forward" size={20} color="#fff" />
+                    </LinearGradient>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                    style={styles.secondaryButton}
+                    onPress={() => navigation.replace('ScreeningTest')}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="refresh-circle" size={22} color="#547bfb" />
+                    <Text style={styles.secondaryButtonText}>Initiate New Screening</Text>
+                </TouchableOpacity>
+                
+                {/* Medical Disclaimer */}
+                <View style={styles.disclaimerBox}>
+                    <Ionicons name="document-text-outline" size={18} color="#9ca3af" />
+                    <Text style={styles.disclaimerText}>
+                        Medical Disclaimer: This screening tool provides informational insights only 
+                        and does not constitute medical advice. Always consult a licensed healthcare 
+                        provider for proper diagnosis and treatment.
+                    </Text>
+                </View>
+            </Animated.View>
         </ScrollView>
     );
 };
@@ -120,65 +276,86 @@ const styles = StyleSheet.create({
     },
     header: {
         paddingTop: 60,
-        paddingBottom: 40,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
+        paddingBottom: 50,
+        borderBottomLeftRadius: 40,
+        borderBottomRightRadius: 40,
+    },
+    headerContent: {
         alignItems: 'center',
     },
     iconContainer: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         alignItems: 'center',
-        marginBottom: 10,
-        position: 'relative',
+        justifyContent: 'center',
+        marginBottom: 16,
     },
-    emoji: {
-        fontSize: 40,
-        position: 'absolute',
-        bottom: -15,
-        right: -10,
-    },
-    title: {
-        fontSize: 26,
+    grade: {
+        fontSize: 42,
         fontWeight: 'bold',
         color: '#fff',
-        textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: 4,
     },
-    subtitle: {
-        fontSize: 14,
-        color: 'rgba(255,255,255,0.9)',
-        textAlign: 'center',
+    status: {
+        fontSize: 22,
+        fontWeight: '600',
+        color: '#fff',
+        marginBottom: 12,
     },
-    card: {
-        backgroundColor: '#fff',
-        margin: 20,
+    badge: {
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    badgeText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    content: {
+        paddingHorizontal: 20,
         marginTop: -20,
-        padding: 24,
+    },
+    scoreCard: {
+        backgroundColor: '#fff',
         borderRadius: 24,
+        padding: 24,
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 3,
+        marginBottom: 20,
     },
     scoreLabel: {
-        fontSize: 14,
-        color: '#64748b',
-        marginBottom: 16,
+        fontSize: 13,
+        fontWeight: '500',
+        color: '#6b7280',
         textTransform: 'uppercase',
         letterSpacing: 1,
+        marginBottom: 12,
     },
     scoreValue: {
         fontSize: 64,
         fontWeight: 'bold',
         marginBottom: 16,
     },
+    scorePercent: {
+        fontSize: 24,
+        fontWeight: '400',
+        color: '#9ca3af',
+    },
+    scoreBarContainer: {
+        width: '100%',
+        marginBottom: 20,
+    },
     scoreBar: {
-        width: width - 88,
+        width: '100%',
         height: 8,
-        backgroundColor: '#e2e8f0',
+        backgroundColor: '#e5e7eb',
         borderRadius: 4,
-        marginBottom: 16,
         overflow: 'hidden',
     },
     scoreBarFill: {
@@ -187,69 +364,131 @@ const styles = StyleSheet.create({
     },
     scoreDescription: {
         fontSize: 14,
-        color: '#475569',
+        color: '#4b5563',
         textAlign: 'center',
         lineHeight: 20,
+        marginBottom: 16,
     },
-    recommendationsBox: {
-        backgroundColor: '#eff6ff',
-        marginHorizontal: 20,
-        marginBottom: 20,
-        padding: 16,
-        borderRadius: 16,
-    },
-    recommendationsTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#1e40af',
-        marginBottom: 12,
-    },
-    recommendationsText: {
-        fontSize: 14,
-        color: '#1e40af',
-        lineHeight: 22,
-    },
-    primaryBtn: {
-        backgroundColor: '#547bfb',
-        marginHorizontal: 20,
-        marginBottom: 12,
-        padding: 16,
-        borderRadius: 14,
+    sourceBadge: {
+        flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: '#f3f4f6',
+        borderRadius: 20,
     },
-    primaryBtnText: {
+    sourceText: {
+        fontSize: 12,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    section: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        padding: 20,
+        marginBottom: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 20,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#1f2937',
+    },
+    recommendationItem: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 16,
+    },
+    bulletPoint: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginTop: 6,
+        marginRight: 12,
+    },
+    recommendationText: {
+        flex: 1,
+        fontSize: 14,
+        color: '#4b5563',
+        lineHeight: 20,
+    },
+    infoBox: {
+        flexDirection: 'row',
+        backgroundColor: '#eff6ff',
+        padding: 16,
+        borderRadius: 12,
+        gap: 12,
+    },
+    infoText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#1e40af',
+        lineHeight: 18,
+    },
+    primaryButton: {
+        marginBottom: 12,
+        borderRadius: 16,
+        overflow: 'hidden',
+        shadowColor: '#547bfb',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    primaryGradient: {
+        flexDirection: 'row',
+        paddingVertical: 16,
+        paddingHorizontal: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 12,
+    },
+    primaryButtonText: {
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
     },
-    secondaryBtn: {
+    secondaryButton: {
         flexDirection: 'row',
         backgroundColor: '#fff',
-        marginHorizontal: 20,
-        marginBottom: 20,
-        padding: 14,
-        borderRadius: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
+        gap: 10,
+        marginBottom: 20,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: '#e5e7eb',
     },
-    secondaryBtnText: {
+    secondaryButtonText: {
         color: '#547bfb',
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '500',
     },
     disclaimerBox: {
         flexDirection: 'row',
-        marginHorizontal: 20,
-        marginBottom: 40,
-        padding: 12,
         backgroundColor: '#fef2f2',
-        borderRadius: 12,
-        gap: 8,
+        padding: 16,
+        borderRadius: 16,
+        gap: 12,
+        marginBottom: 40,
     },
-    disclaimer: {
+    disclaimerText: {
         flex: 1,
         fontSize: 11,
         color: '#991b1b',
