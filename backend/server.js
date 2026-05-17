@@ -60,136 +60,372 @@ app.use(cors({
 }));
 
 // 2. Body parsers
-app.use(express.json({ limit: '50mb' }));  // ← ADD THIS - increase JSON limit
+app.use(express.json({ limit: '50mb' }));  // ←- increase JSON limit
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ===== AI SERVICE PROXY =====
-
 // Use the detected IP address for AI service
 const AI_SERVICE_URL = `http://${LOCAL_IP}:5001`; // Your Python AI service
-
 console.log(`🤖 AI Service URL: ${AI_SERVICE_URL}`);
 
-// Endpoint for audio analysis
-// In server.js - Replace the /api/analyze-audio endpoint
-
-// Endpoint for audio analysis
-// In server.js - Update the /api/analyze-audio endpoint
-
-app.post('/api/analyze-audio', async (req, res) => {
-    try {
-        const { audio_base64 } = req.body;
+// ===== NEW: UNIFIED SCREENING ENDPOINT (Audio + Questionnaire) =====
+app.post('/api/unified-screening', async (req, res) => {
+  try {
+    const { audio_base64, questionnaire_answers } = req.body;
+    
+    console.log('🎤 Received unified screening request');
+    console.log('📊 Audio present:', !!audio_base64);
+    console.log('📋 Questionnaire answers:', questionnaire_answers ? Object.keys(questionnaire_answers).length : 0);
+    
+    let audioResult = null;
+    let questionnaireScore = null;
+    
+    // 1. Process audio if provided
+    if (audio_base64) {
+      try {
+        // Check AI service health
+        const healthCheck = await fetch(`${AI_SERVICE_URL}/health-audio`, {
+          method: 'GET',
+          timeout: 3000
+        });
         
-        console.log('🎤 Received audio analysis request');
-        console.log('📊 Audio base64 length:', audio_base64?.length || 0);
-        
-        if (!audio_base64) {
-            return res.status(400).json({ 
-                error: 'No audio data provided',
-                severity: 'error',
-                asthma_probability: 0,
-                confidence: 0,
-                message: 'Please provide audio data'
-            });
-        }
-        
-        // Check if AI service is reachable first
-        try {
-            const healthCheck = await fetch(`${AI_SERVICE_URL}/health-audio`, {
-                method: 'GET',
-                timeout: 3000
-            });
-            if (!healthCheck.ok) {
-                throw new Error('AI service health check failed');
-            }
-            console.log('✅ AI service is healthy');
-        } catch (healthError) {
-            console.error('❌ AI service health check failed:', healthError.message);
-            return res.status(503).json({ 
-                error: 'AI service unavailable',
-                severity: 'error',
-                asthma_probability: 0,
-                confidence: 0,
-                message: 'The asthma detection service is starting up. Please try again in a moment.',
-                details: 'AI service not responding'
-            });
-        }
-        
-        // Forward to Python AI service
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
-        
-        const response = await fetch(`${AI_SERVICE_URL}/predict-asthma-audio`, {
+        if (healthCheck.ok) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 45000);
+          
+          const response = await fetch(`${AI_SERVICE_URL}/predict-asthma-audio`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ audio_base64: audio_base64 }),
             signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ AI service error response:', response.status, errorText);
-            throw new Error(`AI service responded with status ${response.status}: ${errorText.substring(0, 200)}`);
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            audioResult = await response.json();
+            console.log('✅ Audio analysis complete:', audioResult.asthma_probability);
+          }
         }
-        
-        const aiResult = await response.json();
-        
-        // Apply thresholds in Node.js backend instead
-        const probability = aiResult.asthma_probability;
-        
-        let severity, message, next_action;
-        
-        if (probability < 0.05) {
-            severity = "low";
-            message = "Low probability of asthma. You appear healthy!";
-            next_action = "healthy_exit";
-        } else if (probability < 0.30) {
-            severity = "uncertain";
-            message = "Your results are inconclusive. Please complete the questionnaire for a more accurate assessment.";
-            next_action = "questionnaire";
-        } else {
-            severity = "high";
-            message = "High probability of asthma. Please consult a doctor.";
-            next_action = "continue_to_app";
-        }
-        
-        const result = {
-            asthma_probability: probability,
-            severity: severity,
-            message: message,
-            next_action: next_action,
-            confidence: aiResult.confidence,
-            model_accuracy: 0.845
-        };
-        
-        console.log('✅ Audio analysis complete:', result);
-        res.json(result);
-        
-    } catch (error) {
-        console.error('❌ Error in audio analysis proxy:', error.message);
-        
-        let errorMessage = 'Audio analysis service is temporarily unavailable.';
-        if (error.name === 'AbortError') {
-            errorMessage = 'Analysis timed out. Please try a shorter recording (5-10 seconds).';
-        } else if (error.code === 'ECONNREFUSED') {
-            errorMessage = 'Cannot connect to analysis service. Please ensure the Python AI service is running on port 5001.';
-        }
-        
-        res.status(500).json({ 
-            error: 'Analysis service unavailable',
-            severity: 'error',
-            asthma_probability: 0,
-            confidence: 0,
-            message: errorMessage,
-            details: error.message
-        });
+      } catch (audioError) {
+        console.error('⚠️ Audio analysis failed:', audioError.message);
+        // Continue with questionnaire only
+      }
     }
+    
+    // 2. Process questionnaire if provided
+    if (questionnaire_answers) {
+      questionnaireScore = calculateQuestionnaireScore(questionnaire_answers);
+      console.log('✅ Questionnaire score:', questionnaireScore);
+    }
+    
+    // 3. Calculate unified score
+    const unifiedResult = calculateUnifiedScore(audioResult, questionnaireScore);
+    
+    console.log('🎯 Unified result:', unifiedResult);
+    res.json(unifiedResult);
+    
+  } catch (error) {
+    console.error('❌ Unified screening error:', error);
+    res.status(500).json({
+      error: 'Screening failed',
+      severity: 'error',
+      final_score: 50,
+      message: 'Unable to complete screening. Please try again.'
+    });
+  }
 });
+
+// ===== NEW: QUESTIONNAIRE ONLY ENDPOINT =====
+app.post('/api/questionnaire-screening', async (req, res) => {
+  try {
+    const { questionnaire_answers } = req.body;
+    
+    if (!questionnaire_answers) {
+      return res.status(400).json({ error: 'No questionnaire answers provided' });
+    }
+    
+    const questionnaireScore = calculateQuestionnaireScore(questionnaire_answers);
+    const result = interpretScore(questionnaireScore, 'questionnaire');
+    
+    console.log('📋 Questionnaire screening result:', result);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Questionnaire screening error:', error);
+    res.status(500).json({ error: 'Failed to process questionnaire' });
+  }
+});
+
+// ===== NEW: AUDIO ONLY ENDPOINT (updated thresholds) =====
+app.post('/api/analyze-audio', async (req, res) => {
+  try {
+    const { audio_base64 } = req.body;
+    
+    console.log('🎤 Received audio analysis request');
+    
+    if (!audio_base64) {
+      return res.status(400).json({ 
+        error: 'No audio data provided',
+        severity: 'error',
+        asthma_probability: 0,
+        confidence: 0,
+        message: 'Please provide audio data'
+      });
+    }
+    
+    // Check AI service health
+    try {
+      const healthCheck = await fetch(`${AI_SERVICE_URL}/health-audio`, {
+        method: 'GET',
+        timeout: 3000
+      });
+      if (!healthCheck.ok) throw new Error('AI service health check failed');
+    } catch (healthError) {
+      return res.status(503).json({ 
+        error: 'AI service unavailable',
+        severity: 'error',
+        asthma_probability: 0,
+        confidence: 0,
+        message: 'The asthma detection service is starting up. Please try again in a moment.'
+      });
+    }
+    
+    // Forward to Python AI service
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    
+    const response = await fetch(`${AI_SERVICE_URL}/predict-asthma-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_base64: audio_base64 }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`AI service responded with status ${response.status}`);
+    }
+    
+    const aiResult = await response.json();
+    const result = interpretAudioResult(aiResult);
+    
+    console.log('✅ Audio analysis complete:', result);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Audio analysis error:', error.message);
+    res.status(500).json({ 
+      error: 'Analysis service unavailable',
+      severity: 'error',
+      asthma_probability: 0,
+      confidence: 0,
+      message: 'Audio analysis failed. Please try again.'
+    });
+  }
+});
+
+// ===== HELPER FUNCTIONS =====
+
+// Calculate NHANES questionnaire score
+function calculateQuestionnaireScore(answers) {
+  const questions = [
+    { id: 'wheezing', weight: 3, reverse: false },
+    { id: 'asthma_diagnosis', weight: 3, reverse: false },
+    { id: 'night_symptoms', weight: 2, reverse: false },
+    { id: 'exercise_trigger', weight: 2, reverse: false },
+    { id: 'family_history', weight: 2, reverse: false },
+    { id: 'smoking', weight: 1, reverse: true },
+    { id: 'rescue_use', weight: 2, reverse: false }
+  ];
+  
+  let totalWeight = 0;
+  let weightedScore = 0;
+  
+  questions.forEach(q => {
+    const answer = answers[q.id];
+    if (answer !== undefined) {
+      totalWeight += q.weight;
+      if (answer === true) {
+        weightedScore += q.reverse ? 0 : q.weight;
+      } else {
+        weightedScore += q.reverse ? q.weight : 0;
+      }
+    }
+  });
+  
+  if (totalWeight === 0) return 50;
+  return (weightedScore / totalWeight) * 100;
+}
+
+// Calculate unified score (60% audio, 40% questionnaire)
+function calculateUnifiedScore(audioResult, questionnaireScore) {
+  let audioScore = 50; // Default if no audio
+  
+  if (audioResult && audioResult.asthma_probability) {
+    audioScore = audioResult.asthma_probability * 100;
+  }
+  
+  let finalScore = audioScore;
+  let source = 'audio';
+  
+  if (questionnaireScore !== null) {
+    if (audioResult && audioResult.asthma_probability) {
+      // Both available: 60% audio, 40% questionnaire
+      finalScore = (audioScore * 0.6) + (questionnaireScore * 0.4);
+      source = 'combined';
+    } else {
+      // Only questionnaire
+      finalScore = questionnaireScore;
+      source = 'questionnaire';
+    }
+  }
+  
+  return interpretScore(finalScore, source);
+}
+
+//========= Interpret score into severity and recommendations
+
+function interpretBinaryScore(score, source, isAsthmatic) {
+  let classification, message, recommendations;
+  
+  if (isAsthmatic) {
+    classification = 'asthma';
+    message = 'Asthmatic indicators detected. Please consult a healthcare provider.';
+    recommendations = [
+      'Schedule an appointment with a pulmonologist',
+      'Complete pulmonary function testing',
+      'Keep a symptom diary',
+      'Avoid known respiratory triggers'
+    ];
+  } else {
+    classification = 'healthy';
+    message = 'No asthmatic indicators detected. Breathing pattern appears normal.';
+    recommendations = [
+      'Continue healthy lifestyle habits',
+      'Regular physical activity',
+      'Re-screen annually or if symptoms develop'
+    ];
+  }
+  
+  return {
+    final_score: Math.round(score),
+    is_asthmatic: isAsthmatic,
+    classification: classification,
+    message: message,
+    source: source,
+    recommendations: recommendations
+  };
+}
+// function interpretScore(score, source) {
+//   let severity, message, recommendations;
+  
+//   if (score >= 70) {
+//     severity = 'high';
+//     message = 'High probability of asthma. Please consult a healthcare provider.';
+//     recommendations = [
+//       'Schedule an appointment with a pulmonologist',
+//       'Complete pulmonary function testing',
+//       'Avoid known respiratory triggers',
+//       'Keep a symptom diary'
+//     ];
+//   } else if (score >= 40) {
+//     severity = 'moderate';
+//     message = 'Moderate probability. Further evaluation recommended.';
+//     recommendations = [
+//       'Monitor symptoms for 2-4 weeks',
+//       'Consider follow-up with primary care provider',
+//       'Avoid smoke and air pollution',
+//       'Re-test in 3 months'
+//     ];
+//   } else if (score >= 20) {
+//     severity = 'mild';
+//     message = 'Mild suspicion. Continue monitoring.';
+//     recommendations = [
+//       'Maintain healthy lifestyle',
+//       'Regular exercise to improve lung health',
+//       'Avoid smoking and secondhand smoke',
+//       'Annual check-up recommended'
+//     ];
+//   } else {
+//     severity = 'low';
+//     message = 'Low probability. You appear healthy!';
+//     recommendations = [
+//       'Continue healthy lifestyle habits',
+//       'Regular physical activity',
+//       'Stay up to date with vaccinations',
+//       'Re-screen annually or if symptoms develop'
+//     ];
+//   }
+  
+//   return {
+//     final_score: Math.round(score),
+//     severity: severity,
+//     message: message,
+//     source: source,
+//     recommendations: recommendations,
+//     requires_followup: severity !== 'low'
+//   };
+// }
+
+// =================Interpret audio-only result
+// Interpret audio-only result - BINARY (Asthma vs No Asthma)
+function interpretAudioResult(aiResult) {
+  const probability = aiResult.asthma_probability || 0;
+  
+  // THRESHOLD ADJUSTED: 0.20 to catch your 0.32 asthma patients
+  // Normal people are <0.09, Asthma patients are >=0.32
+  const ASTHMA_THRESHOLD = 0.32;
+  
+  let severity, message, isAsthma;
+  
+  if (probability >= ASTHMA_THRESHOLD) {
+    isAsthma = true;
+    severity = 'asthma';
+    message = 'Asthmatic breathing pattern detected. Please consult a healthcare provider.';
+  } else {
+    isAsthma = false;
+    severity = 'healthy';
+    message = 'No asthmatic pattern detected. Breathing sounds normal.';
+  }
+  
+  return {
+    asthma_probability: probability,
+    is_asthmatic: isAsthma,
+    classification: severity,
+    message: message,
+    confidence: aiResult.confidence || 0.8,
+    recommendation: isAsthma ? 'Schedule a pulmonary evaluation' : 'Continue healthy lifestyle'
+  };
+}
+// function interpretAudioResult(aiResult) {
+//   const probability = aiResult.asthma_probability || 0;
+  
+//   let severity, message;
+  
+//   if (probability >= 0.3) {
+//     severity = 'high';
+//     message = 'High probability detected. Please consult a doctor.';
+//   } else if (probability >= 0.4) {
+//     severity = 'moderate';
+//     message = 'Moderate probability. Further evaluation recommended.';
+//   } else if (probability >= 0.2) {
+//     severity = 'mild';
+//     message = 'Mild suspicion. Monitor your symptoms.';
+//   } else {
+//     severity = 'low';
+//     message = 'Low probability. You appear healthy!';
+//   }
+  
+//   return {
+//     asthma_probability: probability,
+//     severity: severity,
+//     message: message,
+//     confidence: aiResult.confidence || 0.8,
+//     next_action: severity === 'high' ? 'consult_doctor' : 'monitor'
+//   };
+// }
 
 // Test endpoint to check if AI service is reachable
 app.get('/api/ai-health', async (req, res) => {
@@ -296,5 +532,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📍 Network: http://${LOCAL_IP}:${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`📍 AI Service Health: http://localhost:${PORT}/api/ai-health`);
+  console.log(`📍 Unified Screening: http://localhost:${PORT}/api/unified-screening`);
+  console.log(`📍 Questionnaire Only: http://localhost:${PORT}/api/questionnaire-screening`);
   console.log(`📍 AI Service URL: ${AI_SERVICE_URL}`); 
 });

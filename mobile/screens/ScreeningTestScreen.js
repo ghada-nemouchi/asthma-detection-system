@@ -1,4 +1,4 @@
-// screens/ScreeningTestScreen.js - Working Custom Breathing Animation
+// screens/ScreeningTestScreen.js - COMPLETE with auto IP detection + test button
 import React, { useState, useRef, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView,
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
+import { initServerIp, getPythonBaseUrl } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -59,27 +60,61 @@ export default function ScreeningTestScreen({ navigation }) {
     const [recordingTime, setRecordingTime] = useState(0);
     const [analyzing, setAnalyzing] = useState(false);
     const [audioResult, setAudioResult] = useState(null);
+    const [serverBaseUrl, setServerBaseUrl] = useState(null);
+    const [connectionStatus, setConnectionStatus] = useState('detecting...');
     
     // Questionnaire states
     const [answers, setAnswers] = useState({});
+    
+    // UI states
+    const [showDebug, setShowDebug] = useState(false); // For testing
     
     // Animation values
     const timerRef = useRef(null);
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const opacityAnim = useRef(new Animated.Value(0.6)).current;
-    const breathingLoopRef = useRef(null);
     
-    // Cleanup
+    // Initialize server connection on mount
     useEffect(() => {
+        initializeServer();
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
-            if (breathingLoopRef.current) breathingLoopRef.current.stop();
         };
     }, []);
     
+    const initializeServer = async () => {
+        try {
+            setConnectionStatus('detecting...');
+            const ip = await initServerIp();
+            const baseUrl = getPythonBaseUrl();
+            setServerBaseUrl(baseUrl);
+            console.log('✅ Python backend URL:', baseUrl);
+            
+            // Test connection
+            const healthResponse = await fetch(`${baseUrl}/health`);
+            if (healthResponse.ok) {
+                setConnectionStatus('connected');
+                console.log('✅ Connected to Python backend');
+            } else {
+                setConnectionStatus('error');
+                Alert.alert('Connection Warning', 'Backend server found but health check failed.');
+            }
+        } catch (error) {
+            console.error('Failed to initialize server:', error);
+            setConnectionStatus('error');
+            Alert.alert(
+                'Connection Error',
+                'Could not connect to the asthma detection server.\n\n' +
+                'Make sure:\n' +
+                '1. Your computer and phone are on the same WiFi\n' +
+                '2. Python backend is running (python app.py)\n' +
+                '3. Port 5001 is not blocked by firewall'
+            );
+        }
+    };
+    
     // Start breathing animation
     const startBreathingAnimation = () => {
-        // Create a continuous breathing sequence
         const breatheIn = () => {
             Animated.parallel([
                 Animated.timing(scaleAnim, {
@@ -116,27 +151,23 @@ export default function ScreeningTestScreen({ navigation }) {
     const stopBreathingAnimation = () => {
         scaleAnim.stopAnimation();
         opacityAnim.stopAnimation();
-        // Reset to original values
         Animated.parallel([
-            Animated.timing(scaleAnim, {
-                toValue: 1,
-                duration: 300,
-                useNativeDriver: true,
-            }),
-            Animated.timing(opacityAnim, {
-                toValue: 0.6,
-                duration: 300,
-                useNativeDriver: true,
-            })
+            Animated.timing(scaleAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(opacityAnim, { toValue: 0.6, duration: 300, useNativeDriver: true })
         ]).start();
     };
     
     // ============ AUDIO FUNCTIONS ============
     const startRecording = async () => {
+        if (connectionStatus !== 'connected') {
+            Alert.alert('Not Connected', 'Please wait for server connection or check your network.');
+            return;
+        }
+        
         try {
             const permission = await Audio.requestPermissionsAsync();
             if (permission.status !== 'granted') {
-                Alert.alert('Permission Needed', 'Microphone access is required for breathing analysis');
+                Alert.alert('Permission Needed', 'Microphone access is required');
                 return;
             }
             
@@ -152,8 +183,6 @@ export default function ScreeningTestScreen({ navigation }) {
             setRecording(newRecording);
             setIsRecording(true);
             setRecordingTime(0);
-            
-            // Start breathing animation
             startBreathingAnimation();
             
             timerRef.current = setInterval(() => {
@@ -168,7 +197,7 @@ export default function ScreeningTestScreen({ navigation }) {
             
         } catch (err) {
             console.error('Failed to start recording', err);
-            Alert.alert('Error', 'Could not start recording');
+            Alert.alert('Error', 'Could not start recording: ' + err.message);
         }
     };
     
@@ -180,7 +209,6 @@ export default function ScreeningTestScreen({ navigation }) {
             timerRef.current = null;
         }
         
-        // Stop animation
         stopBreathingAnimation();
         setIsRecording(false);
         
@@ -194,17 +222,31 @@ export default function ScreeningTestScreen({ navigation }) {
                 encoding: FileSystem.EncodingType.Base64,
             });
             
-            const response = await fetch('http://192.168.100.15:5001/predict-asthma-audio', {
+            // Use the detected server URL
+            const url = `${serverBaseUrl}/predict-asthma-audio`;
+            console.log('📡 Sending to:', url);
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ audio_base64: base64 })
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const aiResult = await response.json();
+            console.log('📊 Audio result:', aiResult);
+            
             setAudioResult(aiResult);
             setHasRecorded(true);
             
-            Alert.alert('Recording Complete', 'Audio analyzed! Please answer the questionnaire.');
+            if (aiResult.error) {
+                Alert.alert('Analysis Error', aiResult.message || 'Failed to analyze audio');
+            } else {
+                Alert.alert('Recording Complete', `Analysis complete! Probability: ${Math.round(aiResult.asthma_probability * 100)}%`);
+            }
             
         } catch (error) {
             console.error('Analysis error:', error);
@@ -245,16 +287,22 @@ export default function ScreeningTestScreen({ navigation }) {
     };
     
     // ============ FINAL CALCULATION ============
-    const calculateFinalScore = () => {
+    const calculateFinalResult = () => {
         const questionnaireScore = calculateQuestionnaireScore();
+        
+        let finalScore = questionnaireScore;
+        let source = 'questionnaire';
+        let isAsthmatic = false;
         
         if (audioResult && audioResult.asthma_probability) {
             const audioValue = audioResult.asthma_probability * 100;
-            const finalScore = (audioValue * 0.6) + (questionnaireScore * 0.4);
-            return { finalScore, source: 'combined' };
+            finalScore = (audioValue * 0.6) + (questionnaireScore * 0.4);
+            source = 'combined';
+            // Threshold 0.32 for asthma detection
+            isAsthmatic = audioResult.asthma_probability >= 0.32;
         }
         
-        return { finalScore: questionnaireScore, source: 'questionnaire' };
+        return { finalScore, source, isAsthmatic, audioProbability: audioResult?.asthma_probability };
     };
     
     const handleSubmit = () => {
@@ -264,31 +312,42 @@ export default function ScreeningTestScreen({ navigation }) {
             return;
         }
         
-        const { finalScore, source } = calculateFinalScore();
+        const { finalScore, source, isAsthmatic, audioProbability } = calculateFinalResult();
         
-        let severity = 'low';
-        let message = '';
-        
-        if (finalScore >= 70) {
-            severity = 'high';
-            message = 'High probability of asthma. Please consult a doctor.';
-        } else if (finalScore >= 40) {
-            severity = 'moderate';
-            message = 'Moderate probability. Monitor your symptoms.';
-        } else if (finalScore >= 20) {
-            severity = 'mild';
-            message = 'Mild suspicion. Keep monitoring.';
+        if (isAsthmatic) {
+            navigation.replace('SeverityTest', {
+                audioProbability: audioProbability,
+                questionnaireScore: calculateQuestionnaireScore(),
+                finalScore: Math.round(finalScore)
+            });
         } else {
-            severity = 'low';
-            message = 'Low probability. You appear healthy!';
+            navigation.replace('HealthyExit', {
+                score: Math.round(finalScore),
+                source: source,
+                severity: 'low',
+                message: 'No asthmatic pattern detected. You appear healthy!'
+            });
+        }
+    };
+    
+    // ============ TEST FUNCTION ============
+    const testAudioResult = () => {
+        if (!audioResult) {
+            Alert.alert('No Audio', 'Please record audio first');
+            return;
         }
         
-        navigation.replace('HealthyExit', { 
-            score: Math.round(finalScore),
-            source: source,
-            severity: severity,
-            message: message
-        });
+        Alert.alert(
+            '🔬 Audio Analysis Result',
+            `Probability: ${Math.round(audioResult.asthma_probability * 100)}%\n` +
+            `Classification: ${audioResult.asthma_probability >= 0.32 ? 'ASTHMA 🫁' : 'HEALTHY ✅'}\n` +
+            `Confidence: ${Math.round((audioResult.confidence || 0.8) * 100)}%\n\n` +
+            `Interpretation:\n` +
+            `${audioResult.asthma_probability >= 0.32 ? 
+                '⚠️ Asthmatic pattern detected. Will proceed to severity test.' : 
+                '✅ No asthmatic pattern detected.'}`,
+            [{ text: 'OK' }]
+        );
     };
     
     // ============ RENDER ============
@@ -303,6 +362,18 @@ export default function ScreeningTestScreen({ navigation }) {
                 />
                 <Text style={styles.headerTitle}>Respiratory Screening</Text>
                 <Text style={styles.headerSubtitle}>AI-Powered Lung Health Assessment</Text>
+                
+                {/* Connection Status */}
+                <View style={styles.statusContainer}>
+                    <View style={[styles.statusDot, 
+                        connectionStatus === 'connected' ? styles.statusConnected :
+                        connectionStatus === 'error' ? styles.statusError : styles.statusDetecting
+                    ]} />
+                    <Text style={styles.statusText}>
+                        {connectionStatus === 'connected' ? 'Server Connected' :
+                         connectionStatus === 'error' ? 'Connection Error' : 'Detecting Server...'}
+                    </Text>
+                </View>
             </LinearGradient>
             
             {/* Recording Section */}
@@ -323,15 +394,11 @@ export default function ScreeningTestScreen({ navigation }) {
 
                         {isRecording ? (
                             <View style={styles.recordingSection}>
-                                {/* Custom Breathing Animation */}
                                 <View style={styles.animationContainer}>
                                     <Animated.View
                                         style={[
                                             styles.breathingCircle,
-                                            {
-                                                transform: [{ scale: scaleAnim }],
-                                                opacity: opacityAnim,
-                                            }
+                                            { transform: [{ scale: scaleAnim }], opacity: opacityAnim }
                                         ]}
                                     >
                                         <Text style={styles.breathingText}>Breathe</Text>
@@ -339,10 +406,7 @@ export default function ScreeningTestScreen({ navigation }) {
                                     <Animated.View
                                         style={[
                                             styles.breathingRing,
-                                            {
-                                                transform: [{ scale: scaleAnim }],
-                                                opacity: opacityAnim,
-                                            }
+                                            { transform: [{ scale: scaleAnim }], opacity: opacityAnim }
                                         ]}
                                     />
                                 </View>
@@ -357,10 +421,29 @@ export default function ScreeningTestScreen({ navigation }) {
                                 <Text style={styles.analyzingText}>AI analyzing your breathing...</Text>
                             </View>
                         ) : (
-                            <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
-                                <Ionicons name="mic" size={28} color="#fff" />
-                                <Text style={styles.recordBtnText}>Start Test</Text>
-                            </TouchableOpacity>
+                            <>
+                                <TouchableOpacity 
+                                    style={[styles.recordBtn, connectionStatus !== 'connected' && styles.disabledBtn]} 
+                                    onPress={startRecording}
+                                    disabled={connectionStatus !== 'connected'}
+                                >
+                                    <Ionicons name="mic" size={28} color="#fff" />
+                                    <Text style={styles.recordBtnText}>
+                                        {connectionStatus === 'connected' ? 'Start Test' : 'Waiting for Server...'}
+                                    </Text>
+                                </TouchableOpacity>
+                                
+                                {/* TEST BUTTON - Shows audio result (if available) */}
+                                {audioResult && (
+                                    <TouchableOpacity 
+                                        style={styles.testBtn}
+                                        onPress={testAudioResult}
+                                    >
+                                        <Ionicons name="flask-outline" size={20} color="#547bfb" />
+                                        <Text style={styles.testBtnText}>View Audio Result</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
                         )}
                     </>
                 ) : (
@@ -368,7 +451,7 @@ export default function ScreeningTestScreen({ navigation }) {
                         <Ionicons name="checkmark-circle" size={48} color="#10b981" />
                         <Text style={styles.successText}>Recording Complete!</Text>
                         <Text style={styles.successSubtext}>
-                            Confidence: {Math.round((audioResult?.confidence || 0) * 100)}%
+                            Probability: {Math.round((audioResult?.asthma_probability || 0) * 100)}%
                         </Text>
                         <TouchableOpacity 
                             style={styles.retryBtn}
@@ -379,6 +462,15 @@ export default function ScreeningTestScreen({ navigation }) {
                         >
                             <Ionicons name="refresh" size={20} color="#547bfb" />
                             <Text style={styles.retryBtnText}>Record Again</Text>
+                        </TouchableOpacity>
+                        
+                        {/* TEST BUTTON after recording */}
+                        <TouchableOpacity 
+                            style={[styles.testBtn, { marginTop: 8 }]}
+                            onPress={testAudioResult}
+                        >
+                            <Ionicons name="flask-outline" size={20} color="#547bfb" />
+                            <Text style={styles.testBtnText}>View Detailed Audio Result</Text>
                         </TouchableOpacity>
                     </View>
                 )}
@@ -408,14 +500,14 @@ export default function ScreeningTestScreen({ navigation }) {
                                     onPress={() => toggleAnswer(q.id, true)}
                                 >
                                     <Ionicons name="checkmark-circle" size={20} color={answers[q.id] === true ? "#10b981" : "#9ca3af"} />
-                                    <Text style={[styles.optionText, answers[q.id] === true && styles.optionTextSelected]}>Yes</Text>
+                                    <Text style={styles.optionText}>Yes</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.optionBtn, answers[q.id] === false && styles.optionSelected]}
                                     onPress={() => toggleAnswer(q.id, false)}
                                 >
                                     <Ionicons name="close-circle" size={20} color={answers[q.id] === false ? "#ef4444" : "#9ca3af"} />
-                                    <Text style={[styles.optionText, answers[q.id] === false && styles.optionTextSelected]}>No</Text>
+                                    <Text style={styles.optionText}>No</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -467,6 +559,34 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.9)',
         marginTop: 4,
     },
+    statusContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    statusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    statusConnected: {
+        backgroundColor: '#10b981',
+    },
+    statusError: {
+        backgroundColor: '#ef4444',
+    },
+    statusDetecting: {
+        backgroundColor: '#f59e0b',
+    },
+    statusText: {
+        fontSize: 11,
+        color: '#fff',
+    },
     card: {
         backgroundColor: '#fff',
         margin: 16,
@@ -515,10 +635,30 @@ const styles = StyleSheet.create({
         gap: 12,
         marginTop: 16,
     },
+    disabledBtn: {
+        backgroundColor: '#9ca3af',
+    },
     recordBtnText: {
         color: '#fff',
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    testBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+        marginTop: 12,
+        borderRadius: 40,
+        borderWidth: 1,
+        borderColor: '#547bfb',
+        backgroundColor: '#fff',
+        gap: 8,
+    },
+    testBtnText: {
+        color: '#547bfb',
+        fontSize: 14,
+        fontWeight: '500',
     },
     recordingSection: {
         alignItems: 'center',
@@ -658,10 +798,6 @@ const styles = StyleSheet.create({
     optionText: {
         fontSize: 14,
         color: '#374151',
-    },
-    optionTextSelected: {
-        color: '#547bfb',
-        fontWeight: '600',
     },
     submitBtn: {
         marginTop: 16,

@@ -1,26 +1,95 @@
-// services/api.js
+// services/api.js - COMPLETE VERSION (no expo-network, but keeps all functionality)
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// Your computer's IP address from the network / just write in cmd . ipconfig and copy both here and in socket,
-const YOUR_COMPUTER_IP = '192.168.100.15'; 
-const PORT = '5000';
+// Cache for server IP
+let cachedServerIp = null;
 
-// For Android Emulator: 10.0.2.2 points to host machine's localhost
-// For Physical device: Use your computer's IP address
-const getBaseUrl = () => {
-  // If using physical device or emulator with IP
-  if (Platform.OS === 'android') {
-    return `http://${YOUR_COMPUTER_IP}:${PORT}/api`;
-  }
-  // iOS simulator can use localhost or IP
-  return `http://${YOUR_COMPUTER_IP}:${PORT}/api`;
+// Your computer's known IP (from ipconfig)
+const DEFAULT_SERVER_IP = '192.168.100.15';
+const PYTHON_PORT = '5001';
+const NODE_PORT = '5000';
+
+// Function to auto-detect server IP (without expo-network)
+export const detectServerIp = async () => {
+    try {
+        // Common server IPs to try (your computer's likely IP)
+        const possibleIps = [
+            DEFAULT_SERVER_IP,      // Your computer's IP
+            '192.168.1.15',
+            '192.168.0.15',
+            '10.0.0.15',
+            '192.168.100.1',        // Router
+            '192.168.1.1',
+            '192.168.0.1',
+        ];
+        
+        console.log('🔍 Scanning for server at:', possibleIps);
+        
+        // Try to find which IP has the backend
+        for (const testIp of possibleIps) {
+            try {
+                // Test health endpoint on port 5001 (Python backend)
+                const testUrl = `http://${testIp}:${PYTHON_PORT}/health`;
+                console.log(`Testing: ${testUrl}`);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                const response = await fetch(testUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    console.log(`✅ Found backend at: ${testIp}:${PYTHON_PORT}`);
+                    cachedServerIp = testIp;
+                    return testIp;
+                }
+            } catch (e) {
+                // Continue trying
+            }
+        }
+        
+        // If auto-detection fails, return default
+        console.log('⚠️ Auto-detection failed, using default IP:', DEFAULT_SERVER_IP);
+        cachedServerIp = DEFAULT_SERVER_IP;
+        return DEFAULT_SERVER_IP;
+        
+    } catch (error) {
+        console.error('❌ IP detection failed:', error);
+        cachedServerIp = DEFAULT_SERVER_IP;
+        return DEFAULT_SERVER_IP;
+    }
 };
 
+// Get base URL for Node.js API (port 5000) - for auth, patients, etc.
+export const getNodeBaseUrl = () => {
+    const ip = cachedServerIp || DEFAULT_SERVER_IP;
+    
+    // For Android emulator, localhost doesn't work, need actual IP
+    if (Platform.OS === 'android' && ip === 'localhost') {
+        return `http://${DEFAULT_SERVER_IP}:${NODE_PORT}/api`;
+    }
+    return `http://${ip}:${NODE_PORT}/api`;
+};
 
+// Get base URL for Python AI service (port 5001) - for audio analysis
+export const getPythonBaseUrl = () => {
+    const ip = cachedServerIp || DEFAULT_SERVER_IP;
+    return `http://${ip}:${PYTHON_PORT}`;
+};
+
+// Initialize server IP on app start
+export const initServerIp = async () => {
+    const ip = await detectServerIp();
+    cachedServerIp = ip;
+    console.log('✅ Server IP set to:', cachedServerIp);
+    return ip;
+};
+
+// Create axios instance for Node.js backend (port 5000)
 const api = axios.create({
-  baseURL: getBaseUrl(),
+  baseURL: getNodeBaseUrl(),
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -35,8 +104,6 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
         console.log('🔑 Token added to request:', config.url);
-      } else {
-        console.log('⚠️ No token for request:', config.url);
       }
       return config;
     } catch (error) {
@@ -59,62 +126,131 @@ api.interceptors.response.use(
       console.error(`Status: ${error.response.status}`);
       console.error(`Data:`, error.response.data);
     } else if (error.request) {
-      console.error('No response received from server');
-      console.error(`Make sure backend is running on ${YOUR_COMPUTER_IP}:${PORT}`);
+      console.error('No response from server');
+      console.error(`Make sure backend is running on ${cachedServerIp || DEFAULT_SERVER_IP}:${NODE_PORT}`);
     }
     return Promise.reject(error);
   }
 );
 
-// Audio analysis endpoint - MOVED AFTER api is defined
-// services/api.js - Update the analyzeAudio function
+// ============================================
+// AUDIO ANALYSIS FUNCTION (Direct to Python backend)
+// ============================================
 
-export const analyzeAudio = async (audioBase64) => {
+export const analyzeAudio = async (audioBase64, retryCount = 0) => {
     try {
+        // Ensure server IP is detected
+        if (!cachedServerIp) {
+            await initServerIp();
+        }
+        
+        const pythonUrl = getPythonBaseUrl();
+        const url = `${pythonUrl}/predict-asthma-audio`;
+        
         console.log('🎤 Sending audio for analysis...');
+        console.log('📡 To:', url);
         console.log('📊 Audio base64 length:', audioBase64.length);
         
-        const response = await api.post('/analyze-audio', {
-            audio_base64: audioBase64
-        }, {
-            timeout: 60000 // 60 second timeout for audio processing
+        // Use fetch directly (not axios) for better timeout control
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                audio_base64: audioBase64
+            }),
+            signal: controller.signal
         });
         
-        console.log('✅ Audio analysis response:', response.data);
-        return response.data;
-    } catch (error) {
-        console.error('❌ Audio analysis failed:', error.message);
+        clearTimeout(timeoutId);
         
-        // Retry up to 2 times on network errors
-        if (retryCount < 2 && (error.message === 'Network Error' || error.code === 'ECONNABORTED')) {
-            console.log(`🔄 Retrying... (${retryCount + 1}/2)`);
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-            return analyzeAudio(audioBase64, retryCount + 1);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        if (error.response) {
-            console.error('Server response:', error.response.data);
-            return error.response.data;
-        }
+        const data = await response.json();
+        console.log('✅ Audio analysis result:', data);
         
-        if (error.code === 'ECONNABORTED') {
+        // Check for errors in response
+        if (data.error) {
+            console.error('❌ Backend error:', data.message);
             return {
-                error: 'Timeout',
-                severity: 'error',
                 asthma_probability: 0,
-                confidence: 0,
-                message: 'Analysis took too long. Please try a shorter recording (5-10 seconds).'
+                severity: 'error',
+                message: data.message || 'Analysis failed',
+                error: true
             };
         }
         
+        return data;
+        
+    } catch (error) {
+        console.error(`❌ Audio analysis failed (attempt ${retryCount + 1}):`, error.message);
+        
+        // Retry up to 2 times on network errors
+        if (retryCount < 2 && (error.name === 'AbortError' || error.message === 'Network request failed')) {
+            console.log(`🔄 Retrying... (${retryCount + 1}/2)`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return analyzeAudio(audioBase64, retryCount + 1);
+        }
+        
+        // Check if server is reachable
+        if (cachedServerIp) {
+            try {
+                const healthCheck = await fetch(`http://${cachedServerIp}:${PYTHON_PORT}/health`);
+                if (!healthCheck.ok) {
+                    console.error('❌ Python backend health check failed');
+                }
+            } catch (healthError) {
+                console.error('❌ Python backend not reachable at:', `http://${cachedServerIp}:${PYTHON_PORT}`);
+            }
+        }
+        
         return {
-            error: 'Network error',
-            severity: 'error',
             asthma_probability: 0,
-            confidence: 0,
-            message: 'Cannot connect to server. Please check your connection and ensure the backend is running.'
+            severity: 'error',
+            message: error.name === 'AbortError' 
+                ? 'Analysis timeout. Please try a shorter recording (5-10 seconds).'
+                : `Cannot connect to server. Make sure backend is running on ${cachedServerIp || DEFAULT_SERVER_IP}:${PYTHON_PORT}`,
+            error: true,
+            confidence: 0
         };
     }
 };
-// ✅ IMPORTANT: Make sure you export the api instance (NOT an object with default)
+
+// ============================================
+// HEALTH CHECK FUNCTIONS
+// ============================================
+
+export const checkPythonBackendHealth = async () => {
+    if (!cachedServerIp) {
+        await initServerIp();
+    }
+    
+    try {
+        const url = `http://${cachedServerIp}:${PYTHON_PORT}/health`;
+        console.log('🏥 Checking Python backend:', url);
+        const response = await fetch(url, { method: 'GET' });
+        return response.ok;
+    } catch (error) {
+        console.error('Python backend health check failed:', error);
+        return false;
+    }
+};
+
+export const checkNodeBackendHealth = async () => {
+    try {
+        const response = await api.get('/health');
+        return response.status === 200;
+    } catch (error) {
+        console.error('Node backend health check failed:', error);
+        return false;
+    }
+};
+
+// Export the api instance for Node.js backend calls
 export default api;

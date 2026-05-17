@@ -1,4 +1,4 @@
-// App.js
+// App.js - FIXED VERSION (remove AudioScreening and Questionnaire)
 import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { initializeSocket, disconnectSocket } from './services/socket';
 import { getUser } from './utils/storage';
 import { registerForPushNotificationsAsync } from './services/notifications';
+import { initServerIp } from './services/api';
 
 // Import all screens
 import LoginScreen from './screens/LoginScreen';
@@ -20,15 +21,16 @@ import PersonalBestScreen from './screens/PersonalBestScreen';
 import EmergencyContactsScreen from './screens/EmergencyContactsScreen';
 import MedicationScreen from './screens/MedicationScreen';
 import ChatScreen from './screens/ChatScreen';
-import AudioScreeningScreen from './screens/AudioScreeningScreen';
-import QuestionnaireScreen from './screens/QuestionnaireScreen';
+import SeverityResultScreen from './screens/SeverityResultScreen';
+
 import HealthyExitScreen from './screens/HealthyExitScreen';
 import StartScreen from './screens/StartScreen';
 import ScreeningTestScreen from './screens/ScreeningTestScreen';
+import SeverityTestScreen from './screens/SeverityTestScreen';
 
 const Stack = createStackNavigator();
 
-// Custom Header with Navigation Buttons
+// Custom Header (keep as is)
 function CustomHeader({ navigation, route }) {
   const getTitle = () => {
     if (route.name === 'Home') return 'Dashboard';
@@ -71,15 +73,18 @@ function CustomHeader({ navigation, route }) {
           <Ionicons name="person" size={24} color="#fff" />
           <Text style={{ fontSize: 10, color: '#fff', marginTop: 2 }}>Profile</Text>
         </TouchableOpacity>
-        
       </View>
     </View>
   );
 }
 
-// Socket Manager Component
+// Socket Manager (keep as is)
 function SocketManager({ navigation }) {
   useEffect(() => {
+            initServerIp().then(ip => {
+          console.log('📡 Server IP initialized:', ip);
+        });
+      
     const setupSocket = async () => {
       await registerForPushNotificationsAsync();
       const user = await getUser();
@@ -119,7 +124,7 @@ export default function App() {
   return (
     <NavigationContainer ref={navigationRef}>
       <SocketManager navigation={navigationRef.current} />
-      <Stack.Navigator initialRouteName="Start"> 
+      <Stack.Navigator initialRouteName="Start">
         <Stack.Screen 
           name="Start" 
           component={StartScreen} 
@@ -135,34 +140,34 @@ export default function App() {
           component={RegisterScreen} 
           options={{ title: 'Create Account' }} 
         />
+        {/* REMOVED: AudioScreening and Questionnaire - now using unified ScreeningTest */}
         <Stack.Screen 
-          name="AudioScreening" 
-          component={AudioScreeningScreen} 
-          options={{ title: 'Audio Screening' }} 
+          name="ScreeningTest" 
+          component={ScreeningTestScreen} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
-            name="Questionnaire" 
-            component={QuestionnaireScreen} 
-            options={{ title: 'Health Questionnaire' }} 
+          name="SeverityTest" 
+          component={SeverityTestScreen} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
-            name="HealthyExit" 
-            component={HealthyExitScreen} 
-            options={{ headerShown: false }} 
+          name="SeverityResult" 
+          component={SeverityResultScreen} 
+          options={{ headerShown: false }} 
+      />
+        <Stack.Screen 
+          name="HealthyExit" 
+          component={HealthyExitScreen} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="Home" 
           component={DashboardScreen} 
           options={({ navigation }) => ({
             header: () => <CustomHeader navigation={navigation} route={{ name: 'Home' }} />,
-
           })}
         />
-        <Stack.Screen 
-          name="ScreeningTest" 
-          component={ScreeningTestScreen} 
-          options={{ headerShown: false }} 
-      />
         <Stack.Screen 
           name="History" 
           component={HistoryScreen} 
