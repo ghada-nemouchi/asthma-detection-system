@@ -38,11 +38,22 @@ export default function EmergencyContactsScreen({ navigation }) {
   };
 
   const saveContact = async () => {
-    if (!formData.name || !formData.phone) {
-      Alert.alert('Error', 'Name and phone number are required');
+    // Check if at least one contact method is provided
+    if (!formData.name ) {
+      Alert.alert('Error', 'Name is required');
+      return;
+    }
+    if ( !formData.email) {
+      Alert.alert('Error', 'Email is required');
       return;
     }
 
+     // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
     try {
       if (editingContact) {
         await api.put(`/emergency-contacts/${editingContact._id}`, formData);
@@ -172,14 +183,19 @@ export default function EmergencyContactsScreen({ navigation }) {
             </View>
 
             <View style={styles.contactDetails}>
+              {contact.phone && (
               <View style={styles.detailRow}>
                 <Ionicons name="call" size={16} color="#6b7280" />
                 <Text style={styles.detailText}>{contact.phone}</Text>
+                {!contact.email && <Text style={styles.alertMethodBadge}>SMS only</Text>}
+
               </View>
+              )}
               {contact.email && (
                 <View style={styles.detailRow}>
                   <Ionicons name="mail" size={16} color="#6b7280" />
                   <Text style={styles.detailText}>{contact.email}</Text>
+                  {!contact.phone && <Text style={styles.alertMethodBadge}>Email only</Text>}
                 </View>
               )}
               <View style={styles.detailRow}>
@@ -235,7 +251,7 @@ export default function EmergencyContactsScreen({ navigation }) {
             />
 
             <TextInput
-              placeholder="Phone Number *"
+              placeholder="Phone Number (Optional)"
               value={formData.phone}
               onChangeText={(text) => setFormData({...formData, phone: text})}
               keyboardType="phone-pad"
@@ -243,7 +259,7 @@ export default function EmergencyContactsScreen({ navigation }) {
             />
 
             <TextInput
-              placeholder="Email (Optional)"
+              placeholder="Email (Required)"
               value={formData.email}
               onChangeText={(text) => setFormData({...formData, email: text})}
               keyboardType="email-address"
@@ -356,6 +372,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  alertMethodBadge: {
+    fontSize: 10,
+    color: '#547bfb',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
   },
   loader: {
     marginTop: 40,
