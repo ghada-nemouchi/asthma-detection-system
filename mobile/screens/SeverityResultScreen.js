@@ -1,16 +1,165 @@
-// screens/SeverityResultScreen.js - NO EMERGENCY CONTACT
-import React from 'react';
+// screens/SeverityResultScreen.js - WITH AUTO-SAVE TO PROFILE
+import React, { useEffect, useState } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api, { initServerIp } from '../services/api';
 
 export default function SeverityResultScreen({ navigation, route }) {
     const { asthmaType, severity, audioProbability, finalScore } = route.params;
+    const [saving, setSaving] = useState(false);
+    const [user, setUser] = useState(null);
+
+    // Check if user is logged in on mount
+    useEffect(() => {
+        checkUserStatus();
+    }, []);
+
+    const checkUserStatus = async () => {
+        try {
+            const userData = await AsyncStorage.getItem('user');
+            if (userData) {
+                setUser(JSON.parse(userData));
+            }
+        } catch (error) {
+            console.error('Error checking user:', error);
+        }
+    };
+
+    // Save screening results to user profile
+    const saveToProfile = async () => {
+        setSaving(true);
+        
+        try {
+            // Initialize server IP if needed
+            await initServerIp();
+            
+            // Get current user from storage
+            const userData = await AsyncStorage.getItem('user');
+            if (!userData) {
+                // No user logged in - store temporarily for later
+                await AsyncStorage.setItem('pendingScreening', JSON.stringify({
+                    asthmaType: asthmaType.type === 'Allergic (Extrinsic) Asthma' ? 'allergic' : 'nonAllergic', 
+                    severity: severity,
+                    audioProbability: audioProbability,
+                    finalScore: finalScore,
+                    timestamp: new Date().toISOString(),
+                    ginaStep: severity.gina_step,
+                    treatment: severity.treatment
+                }));
+                
+                Alert.alert(
+                    'Results Saved Locally',
+                    'Your assessment results have been saved. Please create an account to access your full dashboard and track your progress over time.',
+                    [
+                        { text: 'Later', style: 'cancel' },
+                        { text: 'Create Account', onPress: () => navigation.replace('Register', { pendingScreening: true }) }
+                    ]
+                );
+                return;
+            }
+            
+            // User is logged in - save directly to profile
+            const parsedUser = JSON.parse(userData);
+            const token = await AsyncStorage.getItem('token');
+            
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+            
+            // Prepare update data
+            const updateData = {
+                asthmaSeverity: getSeverityValue(severity.level),
+                asthmaType: asthmaType.type === 'Allergic (Extrinsic) Asthma' ? 'allergic' : 'nonAllergic', 
+                ginaStep: severity.gina_step,
+                screeningScore: finalScore,
+                screeningDate: new Date().toISOString()
+            };
+            
+            if (route.params?.age) {
+                updateData.age = parseInt(route.params.age);
+            }
+            // if (route.params?.bmi) {
+            //     updateData.bmi = parseFloat(route.params.bmi);
+            // }
+            if (route.params?.sex) {
+                updateData.sex = route.params.sex;
+            }
+            // Update user profile via API
+            const response = await api.put('/patients/me', updateData, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (response.data.success) {
+                // Update local storage
+                const updatedUser = { ...parsedUser, ...updateData };
+                await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+                
+                Alert.alert(
+                    '✅ Results Saved!',
+                    `Your asthma assessment has been saved to your profile.\n\n` +
+                    `Type: ${asthmaType.type}\n` +
+                    `Severity: ${severity.level}\n` +
+                    `GINA Step: ${severity.gina_step}`,
+                    [
+                        { text: 'Go to Dashboard', onPress: () => navigation.replace('Home') }
+                    ]
+                );
+            } else {
+                throw new Error('Failed to save results');
+            }
+            
+        } catch (error) {
+            console.error('Error saving to profile:', error);
+            
+            // Fallback: save locally
+            await AsyncStorage.setItem('pendingScreening', JSON.stringify({
+                asthmaType: asthmaType,
+                severity: severity,
+                audioProbability: audioProbability,
+                finalScore: finalScore,
+                timestamp: new Date().toISOString(),
+                age: route.params?.age,
+                sex: route.params?.sex,
+                // bmi: route.params?.bmi
+
+            }));
+            
+            Alert.alert(
+                'Results Saved Locally',
+                'We could not save to your profile right now. Your results have been saved locally and will sync when you log in.',
+                [{ text: 'OK' }]
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
     
+    // Helper function to map severity level to database value
+    const getSeverityValue = (level) => {
+        if (level.includes('Intermittent')) return 'mild';
+        if (level.includes('Mild')) return 'mild';
+        if (level.includes('Moderate')) return 'moderate';
+        if (level.includes('Severe')) return 'severe';
+        return 'mild';
+    };
+    
+    // Handle continue button press
+    const handleContinue = () => {
+        if (user) {
+            // User is logged in, save directly
+            saveToProfile();
+        } else {
+            // User not logged in, store pending and go to login/register
+            saveToProfile();
+        }
+    };
+
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             <LinearGradient 
                 colors={[severity.color, severity.color + 'cc']} 
                 style={styles.header}
@@ -74,13 +223,26 @@ export default function SeverityResultScreen({ navigation, route }) {
             <View style={styles.buttonContainer}>
                 <TouchableOpacity 
                     style={styles.primaryBtn}
-                    onPress={() => navigation.replace('Login', { fromSeverity: true, asthmaDetected: true })}
+                    onPress={handleContinue}
+                    disabled={saving}
                 >
                     <LinearGradient colors={['#547bfb', '#3b82f6']} style={styles.primaryGradient}>
-                        <Text style={styles.primaryBtnText}>Continue to App →</Text>
+                        {saving ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                            <Text style={styles.primaryBtnText}>
+                                {user ? 'Save to My Profile →' : 'Continue to App →'}
+                            </Text>
+                        )}
                     </LinearGradient>
                 </TouchableOpacity>
             </View>
+            
+            {!user && (
+                <Text style={styles.pendingText}>
+                    💾 Your results will be saved and linked to your account when you register/login
+                </Text>
+            )}
             
             <Text style={styles.disclaimer}>
                 Based on GINA 2025 guidelines. This assessment is AI-powered. Always consult a healthcare provider for definitive diagnosis and treatment.
@@ -242,6 +404,15 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    pendingText: {
+        textAlign: 'center',
+        fontSize: 12,
+        color: '#6b7280',
+        marginHorizontal: 16,
+        marginTop: -8,
+        marginBottom: 8,
+        fontStyle: 'italic',
     },
     disclaimer: {
         fontSize: 11,

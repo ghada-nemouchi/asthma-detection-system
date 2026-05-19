@@ -23,6 +23,7 @@ const ProfileScreen = ({ navigation }) => {
     age: '',
     personalBestPef: '',
     asthmaSeverity: '',
+    asthmaType: '',
     address: ''
   });
 
@@ -70,6 +71,7 @@ const ProfileScreen = ({ navigation }) => {
         age: profile.age ? String(profile.age) : '',
         personalBestPef: profile.personalBestPef ? String(profile.personalBestPef) : '',
         asthmaSeverity: profile.asthmaSeverity || 'mild',
+        asthmaType: profile.asthmaType || 'nonAllergic',
         address: profile.address || ''
       });
     }
@@ -83,6 +85,7 @@ const ProfileScreen = ({ navigation }) => {
         age: parseInt(editForm.age) || null,
         personalBestPef: parseInt(editForm.personalBestPef) || null,
         asthmaSeverity: editForm.asthmaSeverity,
+        asthmaType: editForm.asthmaType, 
         address: editForm.address
       });
       
@@ -292,7 +295,37 @@ const ProfileScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
             </View>
-            
+            {/* Asthma Type picker */}
+            <View style={styles.pickerContainer}>
+              <Text style={styles.pickerLabel}>Asthma Type</Text>
+              <View style={styles.severityOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.severityOption,
+                    editForm.asthmaType === 'allergic' && styles.severityOptionSelected
+                  ]}
+                  onPress={() => setEditForm({...editForm, asthmaType: 'allergic'})}
+                >
+                  <Text style={[
+                    styles.severityOptionText,
+                    editForm.asthmaType === 'allergic' && styles.severityOptionTextSelected
+                  ]}>🫁 Allergic</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.severityOption,
+                    editForm.asthmaType === 'nonAllergic' && styles.severityOptionSelected
+                  ]}
+                  onPress={() => setEditForm({...editForm, asthmaType: 'nonAllergic'})}
+                >
+                  <Text style={[
+                    styles.severityOptionText,
+                    editForm.asthmaType === 'nonAllergic' && styles.severityOptionTextSelected
+                  ]}>⚠️ Non-Allergic</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={editForm.address}
@@ -344,7 +377,19 @@ const ProfileScreen = ({ navigation }) => {
                 {profile?.asthmaSeverity ? profile.asthmaSeverity.toUpperCase() : 'Not set'}
               </Text>
             </View>
-            
+            {/* Asthma Type */}
+            <View style={styles.infoRow}>
+              <Text style={styles.label}>Asthma Type</Text>
+              <Text style={[
+                styles.value,
+                profile?.asthmaType === 'allergic' && { color: '#10b981' },
+                profile?.asthmaType === 'nonAllergic' && { color: '#f59e0b' }
+              ]}>
+                {profile?.asthmaType === 'allergic' ? '🫁 Allergic (Extrinsic)' : 
+                profile?.asthmaType === 'nonAllergic' ? '⚠️ Non-Allergic (Intrinsic)' : 
+                'Not determined'}
+              </Text>
+            </View>
             <View style={styles.infoRow}>
               <Text style={styles.label}>Address</Text>
               <Text style={styles.value}>{profile?.address || 'Not set'}</Text>

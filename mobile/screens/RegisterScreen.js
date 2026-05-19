@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, StyleSheet
 } from 'react-native';
@@ -20,7 +20,39 @@ export default function RegisterScreen({ navigation }) {
   const [baselineHr, setBaselineHr] = useState('');
   const [baselineSteps, setBaselineSteps] = useState('');
   
+    //  Declare pendingResults state properly
+  const [pendingResults, setPendingResults] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  //  THIS FUNCTION - Helper to map severity level
+  const getSeverityValue = (level) => {
+    if (!level) return 'mild';
+    if (level.includes('Intermittent')) return 'mild';
+    if (level.includes('Mild')) return 'mild';
+    if (level.includes('Moderate')) return 'moderate';
+    if (level.includes('Severe')) return 'severe';
+    return 'mild';
+  };
+
+  // Check for pending screening results on mount
+  useEffect(() => {
+    checkPendingScreening();
+}, []);
+
+  const checkPendingScreening = async () => {
+      try {
+          const pending = await AsyncStorage.getItem('pendingScreening');
+          if (pending) {
+              const screeningData = JSON.parse(pending);
+              console.log('📋 Found pending screening results:', screeningData);
+              // Store in state to use after registration
+              setPendingResults(screeningData);
+          }
+      } catch (error) {
+          console.error('Error checking pending screening:', error);
+      }
+  };
+
 
   const handleRegister = async () => {
     // Validation
@@ -36,6 +68,7 @@ export default function RegisterScreen({ navigation }) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
+
 
     setLoading(true);
     try {
@@ -103,6 +136,26 @@ export default function RegisterScreen({ navigation }) {
       // ✅ CRITICAL: Mettre à jour les headers axios IMMÉDIATEMENT
       api.defaults.headers.Authorization = `Bearer ${token}`;
       console.log('🔑 Updated axios headers with new token');
+
+       // Save pending screening results BEFORE navigating
+      if (pendingResults) {
+        console.log('📋 Saving pending screening results to profile...');
+        try {
+          await api.put('/patients/me', {
+            asthmaSeverity: getSeverityValue(pendingResults.severity?.level),
+            asthmaType: pendingResults.asthmaType === 'Allergic (Extrinsic) Asthma' ? 'allergic' : 'nonAllergic',
+            ginaStep: pendingResults.severity?.gina_step,
+            screeningScore: pendingResults.finalScore
+          });
+
+        // Clear pending results
+          await AsyncStorage.removeItem('pendingScreening');
+          console.log('✅ Pending screening results saved and cleared');
+        } catch (saveError) {
+          console.error('⚠️ Could not save screening results:', saveError);
+          // Don't block registration if this fails
+        }
+      }
       // Verification
       const storedTokenAfter = await getToken();
       const storedUserAfter = await getUser();
@@ -119,6 +172,7 @@ export default function RegisterScreen({ navigation }) {
         index: 0,
         routes: [{ name: 'Home' }],
       });
+
       
     } catch (error) {
       console.error('❌ Registration error:', error.response?.data || error.message);

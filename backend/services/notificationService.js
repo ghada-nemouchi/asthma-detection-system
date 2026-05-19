@@ -1,5 +1,4 @@
 const nodemailer = require('nodemailer');
-const twilio = require('twilio');
 
 // Email configuration
 const emailTransporter = nodemailer.createTransport({
@@ -10,13 +9,7 @@ const emailTransporter = nodemailer.createTransport({
   }
 });
 
-// SMS configuration (Twilio) - Optionnel, garde-le commenté pour l'instant
-// const twilioClient = twilio(
-//   process.env.TWILIO_ACCOUNT_SID,
-//   process.env.TWILIO_AUTH_TOKEN
-// );
-
-// ✅ VRAIE FONCTION - DÉCOMMENTÉE (celle qui envoie de VRAIS emails)
+// Send emergency alert via email
 const sendEmergencyAlert = async (patient, contact, reading) => {
   const subject = `🚨 EMERGENCY ALERT: ${patient.name} - Critical Asthma Risk`;
   
@@ -92,32 +85,8 @@ Contact Patient: ${patient.phone || 'Not provided'}
     }
   }
   
-  // SMS est commenté pour l'instant (pas de Twilio)
-  // if (contact.phone) {
-  //   try {
-  //     await twilioClient.messages.create({
-  //       body: subject + '\n\n' + message.substring(0, 1600),
-  //       to: contact.phone,
-  //       from: process.env.TWILIO_PHONE_NUMBER
-  //     });
-  //     console.log(`✅ Emergency SMS sent to ${contact.phone}`);
-  //     results.sms = true;
-  //   } catch (error) {
-  //     console.error('❌ SMS send failed:', error.message);
-  //   }
-  // }
-  
   return results;
 };
-
-// ❌ VERSION DE TEST - COMMENTÉE (ne plus utiliser)
-// const sendEmergencyAlert = async (patient, contact, reading) => {
-//   console.log('🔴 EMERGENCY ALERT TRIGGERED!');
-//   console.log(`To: ${contact.name} (${contact.phone}, ${contact.email})`);
-//   console.log(`Patient: ${patient.name} - CRITICAL RISK`);
-//   console.log('=====================================');
-//   return { email: false, sms: false };
-// };
 
 // Notify all emergency contacts for a patient
 const notifyEmergencyContacts = async (patientId, reading) => {

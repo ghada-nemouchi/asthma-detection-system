@@ -14,7 +14,8 @@ const HealthyExitScreen = ({ navigation, route }) => {
         score = 49, 
         source = 'audio', 
         severity = 'moderate', 
-        message: resultMessage 
+        message: resultMessage,
+        isAshmatic = false  // This determines if user has asthma or not
     } = route.params || {};
     
     // Animation values
@@ -45,27 +46,46 @@ const HealthyExitScreen = ({ navigation, route }) => {
         return () => backHandler.remove();
     }, [navigation]);
     
-    // Clinical assessment based on score
+    // Clinical assessment based on score and asthma status
     const getClinicalAssessment = () => {
-        if (score < 30) {
+        // If user is NOT asthmatic, show Healthy status (no risk labels)
+        if (!isAshmatic) {
             return {
-                grade: 'A',
-                status: 'Optimal',
-                description: 'No significant respiratory abnormalities detected.',
+                
+                status: 'Healthy',
+                description: 'No asthma indicators detected. Your respiratory health assessment shows normal patterns.',
                 color: '#10b981',
                 gradient: ['#10b981', '#059669'],
                 icon: 'medal-outline',
                 recommendations: [
-                    'Continue current healthy lifestyle practices',
+                    'Continue maintaining healthy lifestyle practices',
                     'Annual routine health check-up recommended',
+                    'Regular physical activity supports lung health',
+                    'Follow up if new respiratory symptoms develop'
+                ]
+            };
+        }
+        
+        // For asthmatic users, show risk assessment based on score
+        if (score < 30) {
+            return {
+                
+                status: 'Optimal',
+                description: 'Your asthma is well-controlled. No significant abnormalities detected.',
+                color: '#10b981',
+                gradient: ['#10b981', '#059669'],
+                icon: 'medal-outline',
+                recommendations: [
+                    'Continue current asthma management plan',
+                    'Annual routine check-up recommended',
                     'Maintain regular physical activity',
-                    'Follow up if new symptoms develop'
+                    'Keep rescue inhaler accessible'
                 ]
             };
         }
         if (score < 50) {
             return {
-                grade: 'B',
+                
                 status: 'Mild Risk',
                 description: 'Minor respiratory variations observed. Clinical correlation advised.',
                 color: '#f59e0b',
@@ -81,7 +101,7 @@ const HealthyExitScreen = ({ navigation, route }) => {
         }
         if (score < 70) {
             return {
-                grade: 'C',
+                
                 status: 'Moderate Risk',
                 description: 'Notable respiratory patterns detected. Medical evaluation recommended.',
                 color: '#ef4444',
@@ -96,7 +116,7 @@ const HealthyExitScreen = ({ navigation, route }) => {
             };
         }
         return {
-            grade: 'D',
+            
             status: 'High Risk',
             description: 'Significant respiratory concerns identified. Prompt medical evaluation strongly advised.',
             color: '#7f1d1d',
@@ -125,6 +145,10 @@ const HealthyExitScreen = ({ navigation, route }) => {
     
     // Get severity badge color
     const getSeverityBadge = () => {
+        // For healthy users, show "No Asthma Detected"
+        if (!isAshmatic) {
+            return { bg: '#d1fae5', text: '#065f46', label: 'No Asthma Detected' };
+        }
         switch(severity) {
             case 'high': return { bg: '#fee2e2', text: '#991b1b', label: 'High' };
             case 'moderate': return { bg: '#fed7aa', text: '#92400e', label: 'Moderate' };
@@ -155,11 +179,13 @@ const HealthyExitScreen = ({ navigation, route }) => {
                     <View style={styles.iconContainer}>
                         <Ionicons name={assessment.icon} size={70} color="#fff" />
                     </View>
-                    <Text style={styles.grade}>{assessment.grade}</Text>
-                    <Text style={styles.status}>{assessment.status} Risk</Text>
+                    
+                    <Text style={styles.status}>
+                        {isAshmatic ? `${assessment.status} Risk` : assessment.status}
+                    </Text>
                     <View style={[styles.badge, { backgroundColor: severityBadge.bg }]}>
                         <Text style={[styles.badgeText, { color: severityBadge.text }]}>
-                            {severityBadge.label} Suspicion
+                            {severityBadge.label} {!isAshmatic ? '' : 'Suspicion'}
                         </Text>
                     </View>
                 </Animated.View>
@@ -292,12 +318,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: 16,
     },
-    grade: {
-        fontSize: 42,
-        fontWeight: 'bold',
-        color: '#fff',
-        marginBottom: 4,
-    },
+   
     status: {
         fontSize: 22,
         fontWeight: '600',

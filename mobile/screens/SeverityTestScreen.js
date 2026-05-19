@@ -237,7 +237,10 @@ export default function SeverityTestScreen({ navigation, route }) {
             severity: severityResult,
             audioProbability: audioProbability,
             questionnaireScore: questionnaireScore,
-            finalScore: finalScore
+            finalScore: finalScore,
+            age: route.params?.age,        // Pass through age
+            // bmi: route.params?.bmi,        // Pass through BMI  
+            sex: route.params?.sex         // Pass through sex
         });
     };
     

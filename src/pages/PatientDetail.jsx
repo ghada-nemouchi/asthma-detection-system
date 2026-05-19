@@ -522,17 +522,33 @@ const saveProfileEdit = async () => {
           </div>
           
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                          <Heart className="text-red-600" size={22} />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Current Risk</p>
+                          <RiskBadge riskLevel={patient.riskLevel || 'low'} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                <Heart className="text-red-600" size={22} />
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Current Risk</p>
-                <RiskBadge riskLevel={patient.riskLevel || 'low'} />
+                <p className="text-sm text-gray-500">Asthma Type</p>
+                <p className="text-sm font-medium text-gray-800">
+                  {patient.asthmaType === 'allergic' ? '🫁 Allergic (Extrinsic)' : 
+                  patient.asthmaType === 'nonAllergic' ? '⚠️ Non-Allergic (Intrinsic)' : 
+                  'Not specified'}
+                </p>
               </div>
             </div>
           </div>
-          
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">

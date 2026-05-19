@@ -6,7 +6,6 @@ import { TouchableOpacity, Text, View, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { initializeSocket, disconnectSocket } from './services/socket';
 import { getUser } from './utils/storage';
-import { registerForPushNotificationsAsync } from './services/notifications';
 import { initServerIp } from './services/api';
 
 // Import all screens
@@ -22,7 +21,6 @@ import EmergencyContactsScreen from './screens/EmergencyContactsScreen';
 import MedicationScreen from './screens/MedicationScreen';
 import ChatScreen from './screens/ChatScreen';
 import SeverityResultScreen from './screens/SeverityResultScreen';
-
 import HealthyExitScreen from './screens/HealthyExitScreen';
 import StartScreen from './screens/StartScreen';
 import ScreeningTestScreen from './screens/ScreeningTestScreen';
@@ -86,7 +84,6 @@ function SocketManager({ navigation }) {
         });
       
     const setupSocket = async () => {
-      await registerForPushNotificationsAsync();
       const user = await getUser();
       if (user) {
         const socket = await initializeSocket();
