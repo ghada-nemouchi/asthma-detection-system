@@ -40,7 +40,7 @@ const environmentalRoutes = require('./routes/environmental');
 const emergencyContactsRoutes = require('./routes/emergencyContacts');
 const medicationRoutes = require('./routes/medications');
 const messageRoutes = require('./routes/messages');
-
+const guidelineRoutes = require('./routes/guidelines');
 // ===== SOCKET.IO SETUP =====
 const io = socketIo(server, {
   cors: {
@@ -63,6 +63,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));  // ←- increase JSON limit
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+app.use('/api/guidelines', guidelineRoutes);
 // ===== AI SERVICE PROXY =====
 // Use the detected IP address for AI service
 const AI_SERVICE_URL = `http://${LOCAL_IP}:5001`; // Your Python AI service

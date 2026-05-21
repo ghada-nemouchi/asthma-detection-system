@@ -10,6 +10,7 @@ import {
 import StatsCard from '../components/StatsCard';
 import RiskBadge from '../components/RiskBadge';
 import AlertPanel from '../components/AlertPanel';
+import GuidelinesChatModal from '../components/GuidelinesChatModal';
 
 const Dashboard = () => {
   const [patients, setPatients] = useState([]);
@@ -28,6 +29,8 @@ const Dashboard = () => {
   const [showAddPatientModal, setShowAddPatientModal] = useState(false);
   const [availablePatients, setAvailablePatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -320,19 +323,22 @@ const Dashboard = () => {
             <ChevronRight size={18} className="text-gray-400 group-hover:text-blue-500" />
           </button>
           
-          <button className="card p-4 flex items-center justify-between group">
+          <button 
+            onClick={() => setShowGuidelinesModal(true)}
+            className="card p-4 flex items-center justify-between group"
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200">
                 <Shield className="text-purple-600" size={20} />
               </div>
               <div className="text-left">
                 <p className="font-semibold text-gray-800">Risk Guidelines</p>
-                <p className="text-xs text-gray-500">Clinical protocols</p>
+                <p className="text-xs text-gray-500">GINA 2025 Q&A</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-gray-400 group-hover:text-purple-500" />
           </button>
-        </div>
+          </div> 
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -474,6 +480,13 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+      {showGuidelinesModal && (
+        <GuidelinesChatModal 
+          isOpen={showGuidelinesModal} 
+          onClose={() => setShowGuidelinesModal(false)} 
+        />
+      )} 
+      
     </div>
   );
 };
